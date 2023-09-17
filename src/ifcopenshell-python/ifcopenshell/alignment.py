@@ -339,68 +339,6 @@ class BoundedCurve:
     Dim: int = None
 
 
-def synthetic_test(transition_type: str, case: int = 1) -> None:
-    from .ifcgeom import Alignment
-
-    synthetic_path = os.path.join(
-        pathlib.Path.home(),
-        "src",
-        "IFC-Rail-Sample-Files",
-        "1_Alignment with Cant (AWC)",
-        "UT_AWC_0_(Synthetic_Cases)",
-        "Horizontal",
-        "SyntheticTestcases",
-    )
-    type_path = os.path.join(synthetic_path, transition_type)
-    test_index = 2
-    test_data = {
-        1: f"{transition_type}_100.0_inf_300_1_Meter",
-        2: f"{transition_type}_100.0_-inf_-300_1_Meter",
-        3: f"{transition_type}_100.0_300_inf_1_Meter",
-        4: f"{transition_type}_100.0_-300_-inf_1_Meter",
-        5: f"{transition_type}_100.0_1000_300_1_Meter",
-        6: f"{transition_type}_100.0_-1000_-300_1_Meter",
-        7: f"{transition_type}_100.0_300_1000_1_Meter",
-        8: f"{transition_type}_100.0_-300_-1000_1_Meter",
-    }
-    test_case = test_data[test_index]
-    test_title = f"TS{test_index}_{test_data[test_index]}"
-    test_path = os.path.join(type_path, test_title)
-    test_file = f"{test_case}.ifc"
-    test_xlsx = f"TS{test_index}_{test_case}.xlsx"
-    in_file = os.path.join(test_path, test_file)
-    in_xlsx = os.path.join(test_path, test_xlsx)
-
-    df1 = pd.read_excel(in_xlsx, sheet_name="horizontal 2D x,y", skiprows=2)
-    df1.rename(
-        columns={
-            "Station on alignment": "Station",
-            "Seg-specific X-coordinate": "X",
-            "Seg-specific Y-coordinate": "Y",
-        },
-        inplace=True,
-    )
-    model = ifcopenshell.open(in_file)
-
-    align_entity = model.by_type("IfcAlignment")[0]
-    align = Alignment().from_entity(align_entity)
-
-    s = ifcopenshell.geom.settings()
-    s.set(s.INCLUDE_CURVES, True)
-    xy = align.create_shape(settings=s, use_representation=False, point_interval=2)
-
-    fg, ax = plt.subplots()
-    ax.plot(xy.T[0], xy.T[1], marker=".", label="IfcOpenShell")
-    ax.plot(df1["X"], df1["Y"], label="bSI-RailwayRoom")
-    ax.legend()
-    ax.set_title(test_file)
-    ax.set_title(test_title)
-    ax.grid(True, linestyle="-.")
-
-    out_file = f"{test_title}.ifc.png"
-    print(f"[INFO] writing output to {out_file}...")
-    plt.savefig(out_file)
-    print(f"[INFO] done.")
 
 
 def awc_test(index: int = 1, geometry: bool = True) -> None:

@@ -353,13 +353,18 @@ def point_on_CLOTHOID(segment, u: float) -> np.ndarray:
 def direction_on_CLOTHOID(segment, u: float) -> float:
     """
     tangent direction at distance u along a CLOTHOID segment
+    Ref: https://en.wikipedia.org/wiki/Euler_spiral#Formulation
 
     @param segment: IfcAlignmentHorizontalSegment at distance u
     @type segment: ifcopenshell.ifcgeom.AlignmentHorizontalSegment
     """
-    # TODO
 
-    return np.nan
+    R = segment_radius(segment)
+    L = segment.SegmentLength
+    a = 1 / math.sqrt(2 * R * L)
+    theta = (a * u)**2
+
+    return segment.StartDirection + theta
 
 
 def point_on_COSINECURVE(segment, u: float) -> np.ndarray:

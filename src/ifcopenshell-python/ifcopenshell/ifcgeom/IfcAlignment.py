@@ -68,7 +68,6 @@ class Alignment(PositioningElement):
         """
         x = list()
         y = list()
-        z = list()
         directions = list()
 
         segs = self._horizontal.segments
@@ -93,19 +92,24 @@ class Alignment(PositioningElement):
             z = np.ones_like(distances)
             z.fill(np.nan)
         if not self._cant is None:
+            # cant left
             clt = self._cant.calc_cant_amounts(distances)
+            c_rotlt = self._cant.calc_cant_rotations(distances)
         else:
             clt = np.ones_like(distances)
             clt.fill(np.nan)
+            c_rotlt = np.ones_like(distances)
+            c_rotlt.fill(np.nan)
+
+        ref_z = z + clt
 
         xar = np.array(x)
         yar = np.array(y)
         dar = np.array(directions)
-        zar = np.array(z)
-        cltar = np.array(clt)  # cant left
-        ref_zar = zar + cltar
 
-        self._points = np.column_stack((distances, xar, yar, dar, zar, cltar, ref_zar))
+        self._points = np.column_stack(
+            (distances, xar, yar, dar, z, clt, c_rotlt, ref_z)
+        )
 
     def create_shape(
         self,

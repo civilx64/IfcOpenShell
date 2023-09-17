@@ -89,9 +89,6 @@ class AlignmentCantSegment(AlignmentParameterSegment):
     def c_at_distance(self, d: float):
         """
         amount of cant at distance d along an IfcAlignment (entire alignment)
-
-        @param segment: IfcAlignmentCantSegment containing the location
-        @type segment: ifcopenshell.alignment.AlignmentCantSegment
         """
         side = AlignmentCantSide.LEFT
         u = d - self.StartDistAlong
@@ -200,3 +197,15 @@ class AlignmentCant(LinearElement):
         )
 
         return heights
+
+    def calc_cant_rotations(self, d: np.ndarray) -> np.ndarray:
+        """
+        Calculate amount of rotation due to cant at each location specified by the
+        distances array supplied by the alignment that contains this cant alignment.
+
+        @param d: Array of distances along the horizontal alignment at which to calculate values.
+        """
+
+        cant_amts = self.calc_cant_amounts(d)
+        rots = np.arctan2(cant_amts, self.RailHeadDistance)
+        return rots
