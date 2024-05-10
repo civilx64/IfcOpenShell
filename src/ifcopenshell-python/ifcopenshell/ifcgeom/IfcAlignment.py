@@ -180,7 +180,7 @@ class Alignment(PositioningElement):
         cant = pts[:, 5]
 
         axs[0].plot(x, y, linewidth=1)
-        axs[0].set_aspect("equal", "box")
+        axs[0].set_aspect("auto", "datalim")
         axs[1].plot(distances, elevations, linewidth=1)
         axs[2].plot(distances, cant, linewidth=1)
 
