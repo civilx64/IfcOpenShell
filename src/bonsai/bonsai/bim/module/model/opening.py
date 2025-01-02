@@ -824,7 +824,17 @@ class ShowOpenings(Operator, tool.Ifc.Operator):
 
     def _execute(self, context):
         props = bpy.context.scene.BIMModelProperties
-        for obj in context.selected_objects:
+        objs = context.selected_objects
+
+        # add the obj's aggregate, as well, to objs
+        for obj in objs:
+            element = tool.Ifc.get_entity(obj)
+            if element and getattr(element, "Decomposes", None):
+                if element.Decomposes and (aggregate := element.Decomposes[0].RelatingObject):
+                    aggregate_obj = tool.Ifc.get_object(aggregate)
+                    objs.append(aggregate_obj)
+
+        for obj in objs:
             element = tool.Ifc.get_entity(obj)
             if not element or not getattr(element, "HasOpenings", None):
                 continue
@@ -881,8 +891,9 @@ class EditOpenings(Operator, tool.Ifc.Operator):
     def _execute(self, context):
         props = bpy.context.scene.BIMModelProperties
         building_objs = set()
+        current_openings = bpy.data.collections.get("IfcOpeningElement").objects
 
-        for obj in context.selected_objects:
+        for obj in current_openings:
             element = tool.Ifc.get_entity(obj)
             if not element:
                 continue

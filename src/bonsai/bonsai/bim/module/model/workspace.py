@@ -368,6 +368,10 @@ class CreateObjectUI:
             cls.draw_thumbnail(context)
             cls.draw_add_object_parameters(context)
             cls.draw_add_object(context)
+            if len(context.selected_objects) == 2 and tool.Ifc.get_entity(context.selected_objects[0]):
+                op_icon = custom_icon_previews["APPLY_VOID"].icon_id
+                row = layout.row(align=True)
+                row.operator("bim.add_opening", text="Apply Void", icon_value=op_icon)
         else:
             cls.draw_type_manager_launcher(context)
 
@@ -805,6 +809,8 @@ class EditObjectUI:
             op_icon = custom_icon_previews["APPLY_VOID"].icon_id
             row = cls.layout.row(align=True) if ui_context != "TOOL_HEADER" else row
             row.operator("bim.add_opening", text=op_text, icon_value=op_icon)
+            row.label(text="", icon="EVENT_SHIFT")
+            row.label(text="", icon="EVENT_O")
         else:
             op_text = "Add Void" if ui_context != "TOOL_HEADER" else ""
             op_icon = custom_icon_previews["ADD_VOID"].icon_id
@@ -963,6 +969,7 @@ class Hotkey(bpy.types.Operator, tool.Ifc.Operator):
         if bpy.context.scene.BIMGeometryProperties.mode == "ITEM":
             bpy.ops.wm.call_menu(name="BIM_MT_add_representation_item")
         else:
+            # Slab from walls
             walls = False
             for obj in bpy.context.selected_objects:
                 walls = tool.Ifc.get_entity(obj).is_a("IfcWall")
@@ -972,6 +979,16 @@ class Hotkey(bpy.types.Operator, tool.Ifc.Operator):
                 and tool.Model.get_usage_type(tool.Ifc.get().by_id(int(relating_type_id))) == "LAYER3"
             ):
                 bpy.ops.bim.draw_slab_from_wall("INVOKE_DEFAULT")
+                return {"FINISHED"}
+            # Walls from slab
+            slab = tool.Ifc.get_entity(bpy.context.active_object)
+            if (
+                slab
+                and slab.is_a("IfcSlab")
+                and relating_type_id
+                and tool.Model.get_usage_type(tool.Ifc.get().by_id(int(relating_type_id))) == "LAYER2"
+            ):
+                bpy.ops.bim.draw_walls_from_slab("INVOKE_DEFAULT")
                 return {"FINISHED"}
 
             for obj in tool.Blender.get_selected_objects():
@@ -1241,9 +1258,8 @@ class Hotkey(bpy.types.Operator, tool.Ifc.Operator):
             bpy.ops.bim.enable_editing_extrusion_axis()
 
     def hotkey_A_O(self):
-        if not bpy.context.selected_objects:
-            return
-        if AuthoringData.data["has_visible_openings"]:
+        opening_collection = bpy.data.collections.get("IfcOpeningElement")
+        if opening_collection and opening_collection.objects:
             bpy.ops.bim.edit_openings()
         else:
             bpy.ops.bim.show_openings()

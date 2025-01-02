@@ -58,6 +58,7 @@ class Ifc(bonsai.core.tool.Ifc):
 
     @classmethod
     def get_path(cls) -> str:
+        """Get absolute filepath to the IFC file, return empty string if file is not saved."""
         return IfcStore.path
 
     @classmethod
@@ -245,7 +246,7 @@ class Ifc(bonsai.core.tool.Ifc):
         return (uri if not uri else os.path.join(ifc_path, uri)).replace("\\", "/")
 
     @classmethod
-    def get_relative_uri(cls, uri):
+    def get_relative_uri(cls, uri: str) -> str:
         if not os.path.isabs(uri):
             return uri
         ifc_path = cls.get_path()

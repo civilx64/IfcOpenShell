@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Bonsai.  If not, see <http://www.gnu.org/licenses/>.
 
+from __future__ import annotations
 import bpy
 import copy
 import math
@@ -45,6 +46,9 @@ from lark import Lark, Transformer
 class PolylineOperator:
     # TODO Fill doc strings
     """ """
+
+    number_input: list[str]
+    input_type: tool.Polyline.InputType
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
@@ -80,7 +84,6 @@ class PolylineOperator:
         self.number_output = ""
         self.number_is_negative = False
         self.input_options = ["D", "A", "X", "Y"]
-        self.input_type = None
         self.input_type = None
         self.input_value_xy = [None, None]
         self.input_ui = tool.Polyline.create_input_ui()
@@ -170,7 +173,19 @@ class PolylineOperator:
         Plane: {self.tool_state.plane_method}
         Snap: {self.snapping_points[0][1]}
         """
-        context.workspace.status_text_set(self.instructions + custom_instructions + self.snap_info)
+        instructions = self.instructions + custom_instructions + self.snap_info
+
+        def draw_instructions(self: bpy.types.Header, context: bpy.types.Context) -> None:
+            for line in instructions.splitlines():
+                line = line.strip()
+                split = line.split(":", 1)
+                if (key := split[0]) not in ("TAB", "D", "A", "M", "C", "E", "BACKSPACE"):
+                    self.layout.label(text=line)
+                    continue
+
+                self.layout.label(text=split[1], icon=f"EVENT_{key}")
+
+        context.workspace.status_text_set(draw_instructions)
 
     def handle_lock_axis(self, context: bpy.types.Context, event: bpy.types.Event) -> None:
         if event.value == "PRESS" and event.type == "A":
@@ -302,7 +317,7 @@ class PolylineOperator:
             tool.Blender.update_viewport()
 
     def handle_snap_selection(self, context: bpy.types.Context, event: bpy.types.Event) -> None:
-        if event.value == "PRESS" and event.type == "M":
+        if not self.tool_state.is_input_on and event.value == "PRESS" and event.type == "M":
             self.snapping_points = tool.Snap.modify_snapping_point_selection(
                 self.snapping_points, lock_axis=self.tool_state.lock_axis
             )
@@ -314,7 +329,7 @@ class PolylineOperator:
         self, context: bpy.types.Context, event: bpy.types.Event
     ) -> Union[None, set[Literal["CANCELLED"]]]:
         if self.tool_state.is_input_on:
-            if event.value == "RELEASE" and event.type in {"ESC"}:
+            if event.value == "RELEASE" and event.type in {"ESC", "LEFTMOUSE"}:
                 self.recalculate_inputs(context)
                 self.tool_state.mode = "Mouse"
                 self.tool_state.is_input_on = False
