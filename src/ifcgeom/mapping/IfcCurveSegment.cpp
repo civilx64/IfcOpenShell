@@ -207,9 +207,9 @@ class curve_segment_evaluator {
         }
     }
 
-    double length() const {
-        return (segment_type_ == ST_HORIZONTAL || segment_type_ == ST_CANT) ? length_ : projected_length_;
-    }
+    double length() const { return length_ };
+
+    double projected_length() const { return projected_length_ };
 
     const std::optional<std::function<Eigen::Matrix4d(double)>>& parent_curve_function() const {
         return parent_curve_fn_;
@@ -798,11 +798,15 @@ class curve_segment_evaluator {
             Logger::Warning("Expected IfcPolynomialCurve.CoefficientsZ to be undefined for alignment geometry. Coefficients ignored.", pc);
         }
 
-        if (segment_type_ == ST_HORIZONTAL || segment_type_ == ST_VERTICAL) {
+        if (segment_type_ == ST_HORIZONTAL) {
             projected_length_ = length_;
 
             // There is one significant difference between IfcPolynomialCurve used for horizontal and vertical alignments.
-            // For horizontal alignment, u is the distance along the curve. For vertical alignment, u is the horizontal distance.
+            // For horizontal alignment, u is the distance along the curve. For vertical alignment, u is the distance along the BaseCurve.
+            // u can also be thought of as the station, or "distance along" the horizontal alignment.
+            // In the 2D space of vertical alignment (x = distance along horizontal alignment, y = height),
+            // the projected length is the same as the distance along the x-axis.
+
             // From 4.2.2.2.8 the polynomial curve equation is in the form of y = Ax^3 for horizontal parabolic transition segments.
             // To evaluate the horizontal function, the value of x that corresponds to the distance along the curve u is needed.
             // This is what the convert_u functor does. For vertical curves, the convert_u functor simply returns x = u.
@@ -970,11 +974,12 @@ taxonomy::ptr mapping::map_impl(const IfcSchema::IfcCurveSegment* inst) {
     const auto& curve_segment_placement = cse.segment_placement();
 
     auto length = fabs(cse.length());
+    auto projected_length = convert_u(length);
 
     if (segment_type == ST_CANT)
     {
         auto fn = cant_curve_segment_function(*curve_segment_placement, *parent_curve_start_point, *parent_curve_fn);
-        return taxonomy::make<taxonomy::functor_item>(length, fn);
+        return taxonomy::make<taxonomy::functor_item>(length, projected_length, fn);
     } else {
         // The parent curve function returns the 4x4 matrix for the parent curve.
         // Subtract the parent curve start point (remove the translation and rotation)
@@ -1004,7 +1009,7 @@ taxonomy::ptr mapping::map_impl(const IfcSchema::IfcCurveSegment* inst) {
         remove_parent_curve_rotation.col(3) = Eigen::Vector4d(0, 0, 0, 1); // remove the parent curve placement point
 
         auto fn = curve_segment_function(*curve_segment_placement, remove_parent_curve_rotation, remove_parent_curve_translation, *parent_curve_fn);
-        return taxonomy::make<taxonomy::functor_item>(length, fn);
+        return taxonomy::make<taxonomy::functor_item>(length, projected_length, fn);
     }
 }
 
