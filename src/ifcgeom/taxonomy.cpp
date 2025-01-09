@@ -497,7 +497,6 @@ const piecewise_function::spans_t& piecewise_function::spans() const { return sp
 bool piecewise_function::is_empty() const { return spans_.empty(); }
 double piecewise_function::start() const { return start_; }
 double piecewise_function::end() const { return start_ + length(); }
-// double piecewise_function::projected_length() const { return projected_length_; }
 double piecewise_function::length() const {
     return std::accumulate(spans_.begin(), spans_.end(), 0.0, [](const auto& v, const auto& s) { return v + s->length(); });
 

@@ -48,6 +48,7 @@ import bonsai.bim.import_ifc
 from collections import defaultdict
 from math import radians, pi
 from mathutils import Vector, Matrix
+from mathutils.bvhtree import BVHTree
 from bonsai.bim.ifc import IfcStore
 from typing import Union, Iterable, Optional, Literal, Iterator, List, TYPE_CHECKING, get_args, Generator
 from typing_extensions import TypeIs
@@ -261,9 +262,17 @@ class Geometry(bonsai.core.tool.Geometry):
             mesh_element.is_a("IfcShapeRepresentation")
             and ifcopenshell.util.representation.resolve_representation(mesh_element).RepresentationType
             == "AdvancedBrep"
-        ) or mesh_element.is_a("IfcAdvancedBrep"):
+        ) or mesh_element.is_a("IfcAdvancedBrep") or not obj.data:
             return
-        if obj.data and "ios_edges" in obj.data:
+        if hasattr(obj.data, "attributes") and (ios_edges_attribute := obj.data.attributes.get("ios_edges")):
+            # Edges from a forced triangulation are stored as True in a boolean attribute on the mesh
+            bm = bmesh.new()
+            bm.from_mesh(obj.data)
+            edges_to_dissolve = [e for i, e in enumerate(bm.edges) if not ios_edges_attribute.data[i].value]
+            bmesh.ops.dissolve_edges(bm, edges=edges_to_dissolve)
+            bm.to_mesh(obj.data)
+            bm.free()
+        elif "ios_edges" in obj.data:
             bm = bmesh.new()
             bm.from_mesh(obj.data)
             edges_to_keep = set(map(frozenset, obj.data["ios_edges"]))
@@ -1526,8 +1535,8 @@ class Geometry(bonsai.core.tool.Geometry):
 
         Use `.RelatedOpeningElement` to get the opening element.
         """
-        for element in getattr(element, "HasOpenings", ()):
-            yield element
+        for element_rel in getattr(element, "HasOpenings", ()):
+            yield element_rel
 
         if aggregate := ifcopenshell.util.element.get_aggregate(element):
             yield from cls.get_openings(aggregate)
@@ -1784,3 +1793,11 @@ class Geometry(bonsai.core.tool.Geometry):
             if not edge.link_faces:
                 return True
         return False
+
+    @classmethod
+    def get_bvh_tree(cls, obj:bpy.types.Object) -> BVHTree:
+        bm = tool.Blender.get_bmesh_for_mesh(obj.data)
+        bm.transform(obj.matrix_world)
+        return BVHTree.FromBMesh(bm)
+
+        
