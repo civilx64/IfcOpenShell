@@ -144,7 +144,7 @@ class Blender(bonsai.core.tool.Blender):
 
     @classmethod
     def get_active_object(cls) -> bpy.types.Object:
-        return bpy.context.view_layer.objects.active
+        return getattr(bpy.context, "active_object", None) or bpy.context.view_layer.objects.active
 
     @classmethod
     def get_selected_objects(cls) -> set[bpy.types.Object]:
@@ -185,10 +185,6 @@ class Blender(bonsai.core.tool.Blender):
             return context.scene.BIMMaterialProperties.materials[
                 context.scene.BIMMaterialProperties.active_material_index
             ].ifc_definition_id
-        elif obj_type == "MaterialSet":
-            return ifcopenshell.util.element.get_material(
-                tool.Ifc.get_entity(bpy.data.objects.get(obj)), should_skip_usage=True
-            ).id()
         elif obj_type == "MaterialSetItem":
             return bpy.data.objects.get(obj).BIMObjectMaterialProperties.active_material_set_item_id
         elif obj_type == "Task":
@@ -1423,3 +1419,31 @@ class Blender(bonsai.core.tool.Blender):
     def V_(cls, *args: float) -> Vector:
         """Just a shortcut for creating mathutils Vector."""
         return Vector(args)
+
+    @classmethod
+    def detect_icon_color_mode(cls, color_path="user_interface.wcol_regular.text", threshold=1.671):
+        """
+        Uses the text color of a given Blender UI property to determine if custom icons should be dark mode (dm) or light mode (lm).
+
+        Common Blender UI text color paths:
+            - "user_interface.wcol_regular.text"  (Regular Text)
+            - "user_interface.wcol_tool.text"  (Tool Text)
+            - "user_interface.wcol_menu_back.text"  (Menu Background Text)
+            - "user_interface.wcol_menu.text"  (Menu Text)
+            - "user_interface.wcol_menu.text_sel"  (Menu Text Selected)
+
+        Args:
+            color_path (str, optional): The attribute path relative to bpy.context.preferences.themes[0].
+            threshold (float, optional): The RGB sum threshold for determining dark mode. Default is 1.671.
+
+        Returns:
+            str: 'dm' (dark mode) if the RGB sum is > threshold, otherwise 'lm' (light mode).
+        """
+        full_path = f"bpy.context.preferences.themes[0].{color_path}"
+
+        try:
+            color = eval(full_path)[:3]  # Dynamically evaluate and extract RGB values
+            rgb_sum = sum(color)
+            return "dm" if rgb_sum > threshold else "lm"
+        except Exception:
+            return "dm"  # Default to dark mode if an error occurs

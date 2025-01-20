@@ -26,24 +26,10 @@ from bonsai.bim.module.model.data import AuthoringData, RailingData, RoofData
 from typing import Union
 
 
-# TODO duplicate code in cad/workspace and model/workspace
-def check_display_mode():
-    global display_mode
-    try:
-        theme = bpy.context.preferences.themes["Default"]
-        text_color = theme.user_interface.wcol_menu_item.text
-        if sum(text_color) < 2.6:
-            display_mode = "lm"
-        else:
-            display_mode = "dm"
-    except:
-        display_mode = "dm"
-
-
 def load_custom_icons():
-    global custom_icon_previews
+    global custom_icon_previews, display_mode
     if display_mode is None:
-        check_display_mode()
+        display_mode = tool.Blender.detect_icon_color_mode("user_interface.wcol_tool.text")
 
     icons_dir = os.path.join(os.path.dirname(__file__), "..", "..", "data", "icons")
     custom_icon_previews = bpy.utils.previews.new()
@@ -236,7 +222,6 @@ class CadHotkey(bpy.types.Operator):
                 and bpy.context.active_object.BIMRoofProperties.is_editing_path
             ):
                 self.layout.row().prop(props, "gable_roof_edge_angle")
-                self.layout.row().prop(props, "gable_roof_separate_verts")
 
         elif self.hotkey == "S_V":
             if not tool.Geometry.is_profile_object_active():
@@ -285,9 +270,7 @@ class CadHotkey(bpy.types.Operator):
             and RoofData.data["pset_data"]
             and bpy.context.active_object.BIMRoofProperties.is_editing_path
         ):
-            bpy.ops.bim.set_gable_roof_edge_angle(
-                angle=self.props.gable_roof_edge_angle, separate_verts=self.props.gable_roof_separate_verts
-            )
+            bpy.ops.bim.set_gable_roof_edge_angle(angle=self.props.gable_roof_edge_angle)
 
     def hotkey_S_T(self):
         bpy.ops.bim.cad_mitre()

@@ -341,16 +341,24 @@ class AddElement(bpy.types.Operator, tool.Ifc.Operator):
     bl_label = "Add Element"
     bl_options = {"REGISTER", "UNDO"}
     bl_description = "Add an IFC physical product, construction type, and more"
+    is_specific_tool: bpy.props.BoolProperty(default=False, options={"SKIP_SAVE"})
+    ifc_product: bpy.props.StringProperty(options={"SKIP_SAVE"})
+    ifc_class: bpy.props.StringProperty(options={"SKIP_SAVE"})
 
     def invoke(self, context, event):
         return IfcStore.execute_ifc_operator(self, context, is_invoke=True)
 
     def _invoke(self, context, event):
+        props = context.scene.BIMRootProperties
         # For convenience, preselect OBJ representation template if applicable
         if (obj := context.active_object) and obj.type == "MESH":
-            props = context.scene.BIMRootProperties
             props.representation_template = "OBJ"
             props.representation_obj = obj
+        # For convenience, preselect IFC class
+        if self.ifc_product:
+            props.ifc_product = self.ifc_product
+        if self.ifc_class:
+            props.ifc_class = self.ifc_class
         return context.window_manager.invoke_props_dialog(self)
 
     def _execute(self, context):
@@ -380,6 +388,7 @@ class AddElement(bpy.types.Operator, tool.Ifc.Operator):
             mesh = bpy.data.meshes.new("Mesh")
 
         obj = bpy.data.objects.new(props.ifc_class[3:], mesh)
+        obj.name = props.name or "Unnamed"
         obj.location = bpy.context.scene.cursor.location
         element = core.assign_class(
             tool.Ifc,
@@ -390,6 +399,7 @@ class AddElement(bpy.types.Operator, tool.Ifc.Operator):
             predefined_type=predefined_type,
             should_add_representation=False,
         )
+        element.Description = props.description or None
 
         if representation_template == "EMTPY" or not ifc_context:
             pass
@@ -532,34 +542,40 @@ class AddElement(bpy.types.Operator, tool.Ifc.Operator):
                 "material.assign_profile", tool.Ifc.get(), material_profile=material_profile, profile=profile
             )
         elif representation_template == "WINDOW":
-            with context.temp_override(active_object=obj):
+            with context.temp_override(active_object=obj, selected_objects=[]):
                 bpy.ops.bim.add_window()
         elif representation_template == "DOOR":
-            with context.temp_override(active_object=obj):
+            with context.temp_override(active_object=obj, selected_objects=[]):
                 bpy.ops.bim.add_door()
         elif representation_template == "STAIR":
-            with context.temp_override(active_object=obj):
+            with context.temp_override(active_object=obj, selected_objects=[]):
                 bpy.ops.bim.add_stair()
         elif representation_template == "RAILING":
-            with context.temp_override(active_object=obj):
+            with context.temp_override(active_object=obj, selected_objects=[]):
                 bpy.ops.bim.add_railing()
         elif representation_template == "ROOF":
-            with context.temp_override(active_object=obj):
+            with context.temp_override(active_object=obj, selected_objects=[]):
                 bpy.ops.bim.add_roof()
+        tool.Blender.set_active_object(obj)
 
     def draw(self, context):
         props = context.scene.BIMRootProperties
         self.layout.use_property_split = True
         self.layout.use_property_decorate = False
-        prop_with_search(self.layout, props, "ifc_product", text="Definition")
-        prop_with_search(self.layout, props, "ifc_class", should_click_ok_to_validate=True)
+        row = self.layout.row()
+        row.prop(props, "name")
+        row = self.layout.row()
+        row.prop(props, "description")
+        if not self.is_specific_tool:
+            prop_with_search(self.layout, props, "ifc_product", text="Definition", should_click_ok=True)
+            prop_with_search(self.layout, props, "ifc_class", should_click_ok=True)
         ifc_predefined_types = root_prop.get_ifc_predefined_types(context.scene.BIMRootProperties, context)
         if ifc_predefined_types:
-            prop_with_search(self.layout, props, "ifc_predefined_type")
+            prop_with_search(self.layout, props, "ifc_predefined_type", should_click_ok=True)
             if props.ifc_predefined_type == "USERDEFINED":
                 row = self.layout.row()
                 row.prop(props, "ifc_userdefined_type")
-        prop_with_search(self.layout, props, "representation_template", text="Representation")
+        prop_with_search(self.layout, props, "representation_template", text="Representation", should_click_ok=True)
         if props.representation_template == "OBJ":
             row = self.layout.row()
             row.prop(props, "representation_obj", text="Object")
@@ -567,7 +583,7 @@ class AddElement(bpy.types.Operator, tool.Ifc.Operator):
             row = self.layout.row()
             row.prop(props, "profile", text="Profile")
         if props.representation_template != "EMPTY":
-            prop_with_search(self.layout, props, "contexts")
+            prop_with_search(self.layout, props, "contexts", should_click_ok=True)
 
 
 class LaunchAddElement(bpy.types.Operator, tool.Ifc.Operator):

@@ -257,12 +257,9 @@ class IfcImporter:
         self.place_objects_in_collections()
         self.profile_code("Place objects in collections")
         self.setup_arrays()
-        self.setup_aggregates()
         self.profile_code("Setup arrays")
         tool.Project.load_linked_models_from_ifc()
         self.profile_code("Load linked models")
-        self.lock_scales()
-        self.profile_code("Lock objects scales")
         self.add_project_to_scene()
         self.profile_code("Add project to scene")
         if self.ifc_import_settings.should_clean_mesh and len(self.file.by_type("IfcElement")) < 1000:
@@ -1119,30 +1116,6 @@ class IfcImporter:
                         tool.Blender.Modifier.Array.set_children_lock_state(element, i, True)
                         tool.Blender.Modifier.Array.constrain_children_to_parent(element)
 
-    def setup_aggregates(self):
-        elements = set(self.file.by_type("IfcElement"))
-        for element in elements:
-            parts = ifcopenshell.util.element.get_parts(element)
-            if parts:
-                relating_obj = tool.Ifc.get_object(element)
-                if relating_obj:
-                    tool.Aggregate.constrain_all_parts_to_aggregate(relating_obj)
-        bpy.context.scene.BIMAggregateProperties.aggregate_decorator = True
-
-
-    def lock_scales(self) -> None:
-        elements = set(self.file.by_type("IfcProduct"))
-        while elements:
-            element = elements.pop()
-            if not getattr(element, "HasOpenings", False):
-                continue
-            voided_elements = tool.Aggregate.get_parts_recursively(element)
-            voided_elements.add(element)
-            elements.difference_update(voided_elements)
-            for element in voided_elements:
-                if not (obj := tool.Ifc.get_object(element)):
-                    continue
-                tool.Geometry.lock_scale(obj)
 
 
 class IfcImportSettings:

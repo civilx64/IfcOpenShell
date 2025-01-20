@@ -145,7 +145,7 @@ def get_shape_matrix(shape: ShapeElementType) -> MatrixType:
     :param shape: Shape output calculated by IfcOpenShell
     :return: A 4x4 numpy array representing the transformation matrix
     """
-    return np.array(shape.transformation.matrix).reshape((4, 4), order="F")
+    return np.frombuffer(shape.transformation_buffer, "d").reshape((4, 4), order="F")
 
 
 def get_bbox_centroid(geometry: ShapeType) -> tuple[float, float, float]:
@@ -171,7 +171,7 @@ def get_vert_centroid(geometry: ShapeType) -> tuple[float, float, float]:
     return np.mean(get_vertices(geometry), axis=0)
 
 
-def get_element_bbox_centroid(element: ifcopenshell.entity_instance, geometry) -> npt.NDArray[np.float64]:
+def get_element_bbox_centroid(element: ifcopenshell.entity_instance, geometry: ShapeType) -> npt.NDArray[np.float64]:
     """Calculates the element's bounding box centroid
 
     The centroid is in global coordinates. Note that if you have the shape, it
@@ -188,7 +188,7 @@ def get_element_bbox_centroid(element: ifcopenshell.entity_instance, geometry) -
     return (mat @ np.array([*centroid, 1.0]))[0:3]
 
 
-def get_shape_bbox_centroid(shape: ShapeType, geometry: ShapeType) -> npt.NDArray[np.float64]:
+def get_shape_bbox_centroid(shape: ShapeElementType, geometry: ShapeType) -> npt.NDArray[np.float64]:
     """Calculates the shape's bounding box centroid
 
     The centroid is in global coordinates. Note that if you do not have the
@@ -308,7 +308,7 @@ def get_edges_representation_item_ids(geometry: ShapeType) -> npt.NDArray[np.int
     return np.frombuffer(geometry.edges_item_ids_buffer, dtype="i")
 
 
-def get_shape_vertices(shape: ShapeType, geometry: ShapeType) -> npt.NDArray[np.float64]:
+def get_shape_vertices(shape: ShapeElementType, geometry: ShapeType) -> npt.NDArray[np.float64]:
     """Get the shape's vertices as a numpy array
 
     Vertices are in global coordinates. If you do not have the shape, you can
@@ -417,7 +417,7 @@ def get_element_top_elevation(element: ifcopenshell.entity_instance, geometry: S
     return max([v[2] for v in get_element_vertices(element, geometry)])
 
 
-def get_bbox(vertices: Iterable[VECTOR_3D]) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+def get_bbox(vertices: npt.NDArray[np.float64]) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
     """Gets the bounding box of vertices
 
     :param vertices: An iterable of vertices
@@ -426,16 +426,7 @@ def get_bbox(vertices: Iterable[VECTOR_3D]) -> tuple[npt.NDArray[np.float64], np
         right.  E.g.  (np.array([minx, miny, minz]), np.array([maxx, maxy,
         maxz]))
     """
-    x_values = [v[0] for v in vertices]
-    y_values = [v[1] for v in vertices]
-    z_values = [v[2] for v in vertices]
-    minx = min(x_values)
-    maxx = max(x_values)
-    miny = min(y_values)
-    maxy = max(y_values)
-    minz = min(z_values)
-    maxz = max(z_values)
-    return (np.array([minx, miny, minz]), np.array([maxx, maxy, maxz]))
+    return (np.min(vertices, axis=0), np.max(vertices, axis=0))
 
 
 def get_area_vf(vertices: npt.NDArray[np.float64], faces: npt.NDArray[np.int32]) -> float:

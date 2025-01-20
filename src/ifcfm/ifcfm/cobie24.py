@@ -17,13 +17,16 @@
 # along with IfcFM.  If not, see <http://www.gnu.org/licenses/>.
 
 import ifcopenshell
+import ifcopenshell.geom
 import ifcopenshell.util.classification
 import ifcopenshell.util.date
 import ifcopenshell.util.element
 import ifcopenshell.util.fm
 import ifcopenshell.util.placement
+import ifcopenshell.util.shape
 import ifcopenshell.util.system
-from typing import Any, Union, Optional
+from ifcopenshell.util.shape_builder import np_matrix_to_euler
+from typing import Any, Union, Optional, Generator
 
 
 # The original BIMServer plugin has a function called ifcToCOBie:
@@ -163,7 +166,7 @@ def get_documents(
 
 
 def get_attributes(ifc_file: ifcopenshell.file) -> list[dict[str, Any]]:
-    results = []
+    results: list[dict[str, Any]] = []
     history = get_history(ifc_file)
     created_by = get_email_from_history(history) if history else None
     created_on = ifcopenshell.util.date.ifc2datetime(history.CreationDate).isoformat() if history else None
@@ -616,7 +619,6 @@ def get_component_data(ifc_file: ifcopenshell.file, element: ifcopenshell.entity
 
 def get_system_data(ifc_file: ifcopenshell.file, element: ifcopenshell.entity_instance) -> dict[str, Any]:
     system, component = element
-    category = get_category(system)
     component_name = val(component.Name)
     return {
         "Name": val(system.Name),
@@ -851,10 +853,79 @@ def get_document_data(ifc_file: ifcopenshell.file, element: ifcopenshell.entity_
     }
 
 
-def get_attribute_data(
-    ifc_file: ifcopenshell.file, element: ifcopenshell.entity_instance
-) -> ifcopenshell.entity_instance:
+def pass_category_elements_as_data(ifc_file: ifcopenshell.file, element: dict[str, Any]) -> dict[str, Any]:
     return element
+
+
+def get_coordinate_elements(ifc_file: ifcopenshell.file) -> list[dict[str, Any]]:
+    elements = get_floors(ifc_file) + get_spaces(ifc_file)
+    results: list[dict[str, Any]] = []
+    for element in elements:
+        for data in get_coordinate_data_(element):
+            results.append(data)
+    return results
+
+
+def get_coordinate_data_(element: ifcopenshell.entity_instance) -> Generator[dict[str, Any], None, None]:
+    M_TRANSLATION = (slice(0, 3), 3)
+    element_name = val(element.Name)
+    element_class = element.is_a()
+
+    base_data = {
+        "CreatedBy": get_created_by(element),
+        "CreatedOn": get_created_on(element),
+        "RowName": element_name,
+        "ExtSystem": "IfcFm",
+        "ExtObject": element_class,
+        "ExtIdentifier": element.GlobalId,
+    }
+
+    if element_class == "IfcBuildingStorey":
+        matrix = ifcopenshell.util.placement.get_local_placement(element.ObjectPlacement)
+        categories = ("points",)
+        rotation = np_matrix_to_euler(matrix)
+        translation = matrix[M_TRANSLATION]
+        # Rotation axes as explained in https://www.nibs.org/nbims/v3/cobie.
+        points_data = {
+            "Name": element_name,
+            "Category": "point",
+            "SheetName": "Floor",
+            "CoordinateXAxis": translation[0],
+            "CoordinateYAxis": translation[1],
+            "CoordinateZAxis": translation[2],
+            "ClockwiseRotation": rotation[2] * 180,
+            "ElevationalRotation": rotation[0] * 180,
+            "YawRotation": rotation[1] * 180,
+        }
+        yield base_data | points_data
+        return
+
+    # IfcSpaces.
+    if element.Representation is None:
+        return
+
+    settings = ifcopenshell.geom.settings()
+    shape: ifcopenshell.geom.ShapeElementType
+    shape = ifcopenshell.geom.create_shape(settings, element)
+    verts = ifcopenshell.util.shape.get_shape_vertices(shape, shape.geometry)
+    categories = ("box-lowerleft", "box-upperright")
+    bbox = ifcopenshell.util.shape.get_bbox(verts)
+    base_data = base_data | {
+        "Category": "point",
+        "SheetName": "Space",
+        # Spaces don't need rotation as box points are already in world space.
+        "ClockwiseRotation": None,
+        "ElevationalRotation": None,
+        "YawRotation": None,
+    }
+    for category, point in zip(categories, bbox):
+        box_point_data = {
+            "Name": element_name + category,
+            "CoordinateXAxis": point[0],
+            "CoordinateYAxis": point[1],
+            "CoordinateZAxis": point[2],
+        }
+        yield base_data | box_point_data
 
 
 def get_unit_type_name(ifc_file: ifcopenshell.file, unit_type: str) -> Union[str, None]:
@@ -937,6 +1008,7 @@ def get_facility_parent(
 
 
 def val(x: Any) -> Any:
+    """Replace n/a and empty strings with `None`."""
     return x if x not in ("", "n/a") else None
 
 
@@ -1069,6 +1141,7 @@ config = {
     "bool_false": "No",
     "categories": {
         "Contact": {
+            "colour": "r",
             "keys": ["Email"],
             "headers": [
                 "Email",
@@ -1097,6 +1170,7 @@ config = {
             "get_element_data": get_contact_data,
         },
         "Facility": {
+            "colour": "r",
             "keys": ["Name"],
             "headers": [
                 "Name",
@@ -1128,6 +1202,7 @@ config = {
             "get_element_data": get_facility_data,
         },
         "Floor": {
+            "colour": "r",
             "keys": ["Name"],
             "headers": [
                 "Name",
@@ -1147,6 +1222,7 @@ config = {
             "get_element_data": get_floor_data,
         },
         "Space": {
+            "colour": "r",
             "keys": ["Name"],
             "headers": [
                 "Name",
@@ -1169,6 +1245,7 @@ config = {
             "get_element_data": get_space_data,
         },
         "Zone": {
+            "colour": "o",
             "keys": ["Name", "Category", "SpaceNames"],
             "headers": [
                 "Name",
@@ -1187,6 +1264,7 @@ config = {
             "get_element_data": get_zone_data,
         },
         "Type": {
+            "colour": "r",
             "keys": ["Name"],
             "headers": [
                 "Name",
@@ -1231,6 +1309,7 @@ config = {
             "get_element_data": get_type_data,
         },
         "Component": {
+            "colour": "r",
             "keys": ["Name"],
             "headers": [
                 "Name",
@@ -1259,6 +1338,7 @@ config = {
             "get_element_data": get_component_data,
         },
         "System": {
+            "colour": "o",
             "keys": ["Name", "Category", "ComponentNames"],
             "headers": [
                 "Name",
@@ -1277,6 +1357,7 @@ config = {
             "get_element_data": get_system_data,
         },
         "Assembly": {  # Note that this is technically "not required"
+            "colour": "o",
             "keys": ["Name", "SheetName", "ParentName"],
             "headers": [
                 "Name",
@@ -1297,6 +1378,7 @@ config = {
             "get_element_data": get_assembly_data,
         },
         "Connection": {  # Note that this is technically "not required"
+            "colour": "o",
             "keys": ["Name", "ConnectionType", "RowName1", "RowName2"],
             "headers": [
                 "Name",
@@ -1320,6 +1402,7 @@ config = {
             "get_element_data": get_connection_data,
         },
         "Spare": {
+            "colour": "r",
             "keys": ["Name"],
             "headers": [
                 "Name",
@@ -1341,6 +1424,7 @@ config = {
             "get_element_data": get_spare_data,
         },
         "Resource": {
+            "colour": "r",
             "keys": ["Name"],
             "headers": [
                 "Name",
@@ -1358,6 +1442,7 @@ config = {
             "get_element_data": get_resource_data,
         },
         "Job": {
+            "colour": "r",
             "keys": ["Name", "TypeName", "TaskNumber"],
             "headers": [
                 "Name",
@@ -1386,6 +1471,7 @@ config = {
             "get_element_data": get_job_data,
         },
         "Document": {
+            "colour": "r",
             "keys": ["Name", "Stage", "SheetName", "RowName"],
             "headers": [
                 "Name",
@@ -1410,6 +1496,7 @@ config = {
             "get_element_data": get_document_data,
         },
         "Attribute": {
+            "colour": "o",
             "keys": ["Name", "SheetName", "RowName"],
             "headers": [
                 "Name",
@@ -1429,7 +1516,32 @@ config = {
             "colours": "ririiirreeeoo",
             "sort": [{"name": "Category", "order": "ASC"}, {"name": "Name", "order": "ASC"}],
             "get_category_elements": get_attributes,
-            "get_element_data": get_attribute_data,
+            "get_element_data": pass_category_elements_as_data,
+        },
+        "Coordinate": {
+            "colour": "o",
+            "keys": ["Name", "SheetName", "RowName"],
+            "headers": (
+                "Name",
+                "CreatedBy",
+                "CreatedOn",
+                "Category",
+                "SheetName",
+                "RowName",
+                "CoordinateXAxis",
+                "CoordinateYAxis",
+                "CoordinateZAxis",
+                "ExtSystem",
+                "ExtObject",
+                "ExtIdentifier",
+                "ClockwiseRotation",
+                "ElevationalRotation",
+                "YawRotation",
+            ),
+            "colours": "ririiirrreeerrr",
+            "sort": [{"name": "Category", "order": "ASC"}, {"name": "Name", "order": "ASC"}],
+            "get_category_elements": get_coordinate_elements,
+            "get_element_data": pass_category_elements_as_data,
         },
     },
 }

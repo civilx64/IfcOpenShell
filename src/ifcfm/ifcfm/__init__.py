@@ -32,8 +32,9 @@ except:
     pass  # No XLSX support
 
 try:
+    import odf.namespaces as odf_ns
     from odf.opendocument import OpenDocumentSpreadsheet
-    from odf.style import Style, TableCellProperties
+    from odf.style import Style, TableCellProperties, TableProperties
     from odf.table import Table, TableRow, TableCell
     from odf.text import P
 except:
@@ -49,6 +50,7 @@ __version__ = version = "0.0.0"
 
 
 ParserPreset = Literal["basic", "cobie24", "cobie24legacy"]
+GetElementDataCallBack = Callable[[ifcopenshell.file, ifcopenshell.entity_instance], dict[str, Any]]
 _parser_presets_configs = {}
 
 
@@ -69,9 +71,7 @@ def get_presets_configs() -> dict[ParserPreset, dict[str, Any]]:
 class Parser:
     config: dict[str, Any]
     categories: defaultdict[str, dict[str, Any]]
-    get_custom_element_data: dict[
-        str, Union[Callable[[ifcopenshell.file, ifcopenshell.entity_instance], dict[str, Any]], dict[str, Any]]
-    ]
+    get_custom_element_data: dict[str, Union[GetElementDataCallBack, dict[str, Any]]]
     duplicate_keys: list[tuple[dict[str, Any], dict[str, Any]]]
 
     def __init__(self, preset: Union[str, ParserPreset, dict[str, Any]] = "basic"):
@@ -93,6 +93,7 @@ class Parser:
     def parse(self, ifc_file: ifcopenshell.file, name=None):
         for category_name, category_config in self.config["categories"].items():
             for element in category_config["get_category_elements"](ifc_file):
+                get_element_data: Union[GetElementDataCallBack, dict[str, Any]]
                 get_element_data = category_config["get_element_data"]
 
                 if isinstance(get_element_data, dict):
@@ -234,14 +235,26 @@ class Writer:
         doc = OpenDocumentSpreadsheet()
 
         for key, value in self.config.get("colours", {}).items():
+            color_str = "#" + value
+
             style = Style(name=key, family="table-cell")
             style.addElement(TableCellProperties(backgroundcolor="#" + value))
             doc.automaticstyles.addElement(style)
 
+            style = Style(name=f"{key}-table", family="table")
+            style.addElement(props := TableProperties())
+            # odfpy grammar is outdated and it doesn't allow to set it with `setAttribute`.
+            props.setAttrNS(odf_ns.TABLEOOONS, "tab-color", color_str)
+            doc.automaticstyles.addElement(style)
+
         for category, data in self.categories.items():
-            colours = self.config.get("categories", {}).get(category, {}).get("colours", [])
+            category_data = self.config.get("categories", {}).get(category, {})
+            colours = category_data.get("colours", ())
 
             table = Table(name=category)
+            if category_colour := category_data.get("colour", None):
+                table.setAttribute("stylename", f"{category_colour}-table")
+
             tr = TableRow()
             for header in data["headers"]:
                 tc = TableCell(valuetype="string", stylename="h")
@@ -271,18 +284,22 @@ class Writer:
     def write_xlsx(self, output: str) -> None:
         workbook = Workbook()
 
-        cell_formats = {}
+        cell_formats: dict[str, PatternFill] = {}
         for key, value in self.config.get("colours", {}).items():
             fill = PatternFill(start_color=value, end_color=value, fill_type="solid")
             cell_formats[key] = fill
 
         for category, data in self.categories.items():
-            colours = self.config.get("categories", {}).get(category, {}).get("colours", [])
+            category_data = self.config.get("categories", {}).get(category, {})
+            colours = category_data.get("colours", ())
 
             if category in workbook.sheetnames:
                 worksheet = workbook[category]
             else:
                 worksheet = workbook.create_sheet(category)
+
+            if category_colour := category_data.get("colour", None):
+                worksheet.sheet_properties.tabColor = cell_formats[category_colour].start_color.rgb
 
             r = 1  # Openpyxl uses 1-based indexing
             c = 1

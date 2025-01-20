@@ -25,6 +25,7 @@ import logging
 import numpy as np
 import ifcopenshell
 import ifcopenshell.api
+import ifcopenshell.api.geometry
 import ifcopenshell.geom
 import ifcopenshell.util.shape
 import ifcopenshell.util.element
@@ -35,6 +36,7 @@ import ifcopenshell.util.unit
 import bonsai.tool as tool
 import bonsai.core.geometry
 import bonsai.bim.import_ifc as import_ifc
+from collections import defaultdict
 from bonsai.bim.ifc import IfcStore
 from math import pi, radians
 from mathutils import Vector, Matrix
@@ -446,17 +448,9 @@ class AddPotentialOpening(Operator, AddObjectHelper):
     bl_label = "Add Opening"
     bl_description = "Add an Opening object which can be applied on an Element"
     bl_options = {"REGISTER", "UNDO"}
-    x: FloatProperty(name="X", default=0.5)
-    y: FloatProperty(name="Y", default=0.5)
-    z: FloatProperty(name="Z", default=0.5)
-
-    def draw_settings(context, layout, tool):
-        row = self.layout.row()
-        row.prop(data=self, property="x", label="Size X")
-        row = self.layout.row()
-        row.prop(data=self, property="y")
-        row = self.layout.row()
-        row.prop(data=self, property="z")
+    x: FloatProperty(name="Size X", default=0.5, subtype="DISTANCE")
+    y: FloatProperty(name="Y", default=0.5, subtype="DISTANCE")
+    z: FloatProperty(name="Z", default=0.5, subtype="DISTANCE")
 
     def execute(self, context):
         props = context.scene.BIMModelProperties
@@ -497,9 +491,7 @@ class AddPotentialOpening(Operator, AddObjectHelper):
             obj.matrix_world = new_matrix
 
         tool.Model.purge_scene_openings()
-
-        new = props.openings.add()
-        new.obj = obj
+        tool.Root.add_tracked_opening(obj, "OPENING")
 
         DecorationsHandler.install(context)
         return {"FINISHED"}
@@ -511,7 +503,6 @@ class AddPotentialHalfSpaceSolid(Operator, AddObjectHelper):
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
-        props = context.scene.BIMModelProperties
         bm = bmesh.new()
         bmesh.ops.create_grid(bm, size=0.5)
         bm.verts.ensure_lookup_table()
@@ -524,9 +515,7 @@ class AddPotentialHalfSpaceSolid(Operator, AddObjectHelper):
         obj.name = "HalfSpaceSolid"
 
         tool.Model.purge_scene_openings()
-
-        new = props.openings.add()
-        new.obj = obj
+        tool.Root.add_tracked_opening(obj, "BOOLEAN")
 
         DecorationsHandler.install(context)
         return {"FINISHED"}
@@ -540,52 +529,81 @@ class AddBoolean(Operator, tool.Ifc.Operator):
 
     @classmethod
     def poll(cls, context):
-        if not len(context.selected_objects) == 2:
-            cls.poll_message_set("Exactly 2 objects need to be selected.")
+        if not len(context.selected_objects) >= 2:
+            cls.poll_message_set("At least 2 objects need to be selected.")
             return False
         return True
 
     def _execute(self, context):
-        props = context.scene.BIMModelProperties
-        obj1, obj2 = context.selected_objects
-        element1 = tool.Ifc.get_entity(obj1)
-        element2 = tool.Ifc.get_entity(obj2)
-        if not (bool(element1) ^ bool(element2)):
-            self.report({"INFO"}, "One of the selected objects should be blender object and another IFC object.")
-            return {"FINISHED"}
+        ifc_file = tool.Ifc.get()
+        ifc_objects: list[bpy.types.Object] = []
+        non_ifc_objects: list[bpy.types.Object] = []
+        for obj in context.selected_objects:
+            if tool.Ifc.get_entity(obj):
+                ifc_objects.append(obj)
+            else:
+                non_ifc_objects.append(obj)
 
-        # element1 - IFC object, element2 - blender object.
-        if element2 and not element1:
-            obj1, obj2 = obj2, obj1
-            element1, element2 = element2, element1
+        if not non_ifc_objects:
+            self.report({"INFO"}, "At least 1 non-ifc object should be selected to be added as a boolean.")
+            return {"CANCELLED"}
 
-        representation = tool.Geometry.get_active_representation(obj1)
+        if len(ifc_objects) != 1:
+            self.report(
+                {"INFO"},
+                f"Only 1 IFC object need to be selected to add booleans to, currently selected {len(ifc_objects)} IFC objects.",
+            )
+            return {"CANCELLED"}
+
+        ifc_obj = ifc_objects[0]
+
+        representation = tool.Geometry.get_active_representation(ifc_obj)
         if not representation:
             self.report({"INFO"}, "No representation found for the selected IFC object.")
             return {"FINISHED"}
 
-        if not obj2.data or len(obj2.data.polygons) <= 4:  # It takes 4 faces to create a closed solid
-            mesh_data = {"type": "IfcHalfSpaceSolid", "matrix": obj1.matrix_world.inverted() @ obj2.matrix_world}
-        else:
-            mesh_data = {"type": "Mesh", "blender_obj": obj1, "blender_void": obj2}
+        # Apply objects as booleans.
+        booleans = []
+        for boolean_obj in non_ifc_objects:
+            if (
+                not boolean_obj.data
+                or not isinstance(boolean_obj.data, bpy.types.Mesh)
+                or len(boolean_obj.data.polygons) <= 4
+            ):  # It takes 4 faces to create a closed solid
+                mesh_data = {
+                    "type": "IfcHalfSpaceSolid",
+                    "matrix": ifc_obj.matrix_world.inverted() @ boolean_obj.matrix_world,
+                }
+            else:
+                mesh_data = {
+                    "type": "Mesh",
+                    "blender_obj": ifc_obj,
+                    "blender_void": boolean_obj,
+                }
 
-        booleans = ifcopenshell.api.run(
-            "geometry.add_boolean", tool.Ifc.get(), representation=representation, operator="DIFFERENCE", **mesh_data
-        )
+            booleans_ = ifcopenshell.api.geometry.add_boolean(
+                ifc_file,
+                representation=representation,
+                operator="DIFFERENCE",
+                **mesh_data,
+            )
+            booleans.extend(booleans_)
 
-        tool.Model.mark_manual_booleans(element1, booleans)
+        element = tool.Ifc.get_entity(ifc_obj)
+        assert element
+        tool.Model.mark_manual_booleans(element, booleans)
 
         bonsai.core.geometry.switch_representation(
             tool.Ifc,
             tool.Geometry,
-            obj=obj1,
+            obj=ifc_obj,
             representation=representation,
             should_reload=True,
             is_global=True,
             should_sync_changes_first=False,
         )
 
-        tool.Blender.remove_data_blocks([obj2], remove_unused_data=True)
+        tool.Blender.remove_data_blocks(non_ifc_objects, remove_unused_data=True)
         tool.Model.purge_scene_openings()
         return {"FINISHED"}
 
@@ -676,8 +694,7 @@ class ShowBooleans(Operator, tool.Ifc.Operator, AddObjectHelper):
                     objects_to_remove.add(existing_booleans[boolean_id])
                 boolean_obj.data.BIMMeshProperties.ifc_boolean_id = boolean_id
                 boolean_obj.data.BIMMeshProperties.obj = obj
-                new = props.openings.add()
-                new.obj = boolean_obj
+                tool.Root.add_tracked_opening(boolean_obj, "BOOLEAN")
                 booleans_objs.append(boolean_obj)
 
         tool.Blender.remove_data_blocks(objects_to_remove, remove_unused_data=True)
@@ -721,27 +738,43 @@ class HideBooleans(Operator, tool.Ifc.Operator):
         set_active_obj, set_selected_objs = None, None
         boolean_objs: list[bpy.types.Object]
         selected_objects = tool.Blender.get_selected_objects()
-        selected_booleans_objs = [obj for obj in selected_objects if tool.Model.is_boolean_obj(obj)]
+        selected_booleans_objs = [
+            obj for obj in selected_objects if tool.Model.get_tracked_opening_type(obj) == "BOOLEAN"
+        ]
+
+        # Hide currently selected booleans, otherwise hide all booleans.
         if selected_booleans_objs:
             boolean_objs = selected_booleans_objs
             if (active_object := context.active_object) in selected_booleans_objs:
                 active_obj_source = active_object
             else:
                 active_obj_source = selected_booleans_objs[0]
-            set_active_obj = active_obj_source.data.BIMMeshProperties.obj
-            set_selected_objs = [tool.Model.get_booleaned_obj(obj) for obj in boolean_objs]
+            set_active_obj = tool.Model.get_booleaned_obj(active_obj_source)
+            assert set_active_obj
+            set_selected_objs = [
+                bool_obj for obj in selected_booleans_objs if (bool_obj := tool.Model.get_booleaned_obj(obj))
+            ]
         else:
             props = bpy.context.scene.BIMModelProperties
-            boolean_objs = [obj for o in props.openings if (obj := o.obj)]
+            boolean_objs = [obj for o in props.openings if (obj := o.obj) and o.name == "BOOLEAN"]
 
-        objects_to_remove = set()
+        objects_to_remove: set[bpy.types.Object] = set()
+        booleans_to_add: dict[bpy.types.Object, list[bpy.types.Object]] = defaultdict(list)
+
         for obj in boolean_objs:
-            ifc_boolean_id = obj.data.BIMMeshProperties.ifc_boolean_id
-            boolean = tool.Ifc.get_entity_by_id(ifc_boolean_id)
+            main_obj = tool.Model.get_booleaned_obj(obj)
+            if not main_obj:
+                continue
 
             # Update boolean transform.
-            if boolean:
-                main_obj = cast(bpy.types.Object, obj.data.BIMMeshProperties.obj)
+            if main_obj:
+                ifc_boolean_id = obj.data.BIMMeshProperties.ifc_boolean_id
+                boolean = tool.Ifc.get_entity_by_id(ifc_boolean_id)
+
+                if boolean is None:
+                    booleans_to_add[main_obj].append(obj)
+                    continue
+
                 if boolean.is_a("IfcHalfSpaceSolid"):
                     surface = boolean.BaseSurface
 
@@ -764,6 +797,11 @@ class HideBooleans(Operator, tool.Ifc.Operator):
 
         tool.Blender.remove_data_blocks(objects_to_remove, remove_unused_data=True)
         tool.Model.purge_scene_openings()
+
+        if booleans_to_add:
+            for obj, boolean_objs in booleans_to_add.items():
+                with context.temp_override(selected_objects=boolean_objs + [obj]):
+                    bpy.ops.bim.add_boolean()
 
         if set_active_obj and set_selected_objs is not None:
             tool.Blender.set_objects_selection(context, set_active_obj, set_selected_objs)
@@ -862,9 +900,8 @@ class ShowOpenings(Operator, tool.Ifc.Operator):
         for opening in openings_objects:
             self.on_new_opening_obj(opening)
 
-    def on_new_opening_obj(self, opening_obj):
-        new = bpy.context.scene.BIMModelProperties.openings.add()
-        new.obj = opening_obj
+    def on_new_opening_obj(self, opening_obj: bpy.types.Object) -> None:
+        tool.Root.add_tracked_opening(opening_obj, "OPENING")
         opening_obj.display_type = "WIRE"
 
 

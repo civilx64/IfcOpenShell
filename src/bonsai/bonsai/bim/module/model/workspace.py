@@ -32,24 +32,10 @@ from bonsai.bim.module.model.prop import get_ifc_class
 from typing import Optional, Union
 
 
-# TODO duplicate code in cad/workspace and model/workspace
-def check_display_mode():
-    global display_mode
-    try:
-        theme = bpy.context.preferences.themes["Default"]
-        text_color = theme.user_interface.wcol_menu_item.text
-        if sum(text_color) < 2.6:
-            display_mode = "lm"
-        else:
-            display_mode = "dm"
-    except:
-        display_mode = "dm"
-
-
 def load_custom_icons():
-    global custom_icon_previews
+    global custom_icon_previews, display_mode
     if display_mode is None:
-        check_display_mode()
+        display_mode = tool.Blender.detect_icon_color_mode("user_interface.wcol_tool.text")
 
     icons_dir = os.path.join(os.path.dirname(__file__), "..", "..", "data", "icons")
     custom_icon_previews = bpy.utils.previews.new()
@@ -118,10 +104,6 @@ class BimTool(WorkSpaceTool):
             EditObjectUI.draw(context, layout, ifc_element_type=cls.ifc_element_type)
         else:
             CreateObjectUI.draw(context, layout, ifc_element_type=cls.ifc_element_type)
-            # Show some UI for spatial elements that are unselectable by default.
-            if active_ifc_object:
-                EditObjectUI.layout = layout  # Prevent .draw_modes from using old layout and crash.
-                EditObjectUI.draw_modes(context)
 
 
 class WallTool(BimTool):
@@ -392,7 +374,7 @@ class CreateObjectUI:
         row1.operator(
             "bim.launch_type_manager",
             icon="ERROR",
-            text=f"No {AuthoringData.data['ifc_element_type']}s Found",
+            text=f"No {AuthoringData.data['ifc_element_type'] or 'Type'}s Found",
             emboss=False,
         )
         row1.operator(
@@ -410,10 +392,12 @@ class CreateObjectUI:
 
             row = box.row(align=True)
             row.alignment = "CENTER"
-            row.operator(
-                "bim.launch_add_element",
-                text=f"Create New {AuthoringData.data['ifc_element_type']}",
+            op = row.operator(
+                "bim.add_element", text=f"Create New {AuthoringData.data['ifc_element_type'] or 'Type'}", icon="ADD"
             )
+            op.is_specific_tool = bool(AuthoringData.data["ifc_element_type"])
+            op.ifc_product = "IfcElementType"
+            op.ifc_class = AuthoringData.data["ifc_element_type"] or props.ifc_class or ""
 
             row = box.row(align=True)
 
@@ -440,8 +424,9 @@ class CreateObjectUI:
         row = cls.layout.row(align=True)
         if AuthoringData.data["relating_type_id"]:
             row = cls.layout.row(align=True) if ui_context != "TOOL_HEADER" else row
-            op = row.operator("bim.hotkey", text="Add", icon_value=custom_icon_previews["ADD"].icon_id)
-            op.hotkey = "S_A"
+            if context.space_data.type == "VIEW_3D":  # Wall polyline tool works only in 3D Space
+                op = row.operator("bim.hotkey", text="Add", icon_value=custom_icon_previews["ADD"].icon_id)
+                op.hotkey = "S_A"
         else:
             row.label(text="No Construction Type", icon="FILE_3D")
 
@@ -504,62 +489,58 @@ class CreateObjectUI:
         row = cls.layout.row(align=True)
         if not AuthoringData.data["ifc_element_type"]:
             prop_with_search(row, cls.props, "ifc_class", text="Type Class" if ui_context != "TOOL_HEADER" else "")
-        if AuthoringData.data["ifc_classes"]:
-            ifc_class = AuthoringData.data["ifc_class_current"]
-            if ifc_class:
-                box = cls.layout.box()
-                row = box.row(align=True)
-                if AuthoringData.data["type_thumbnail"] and ui_context == "TOOL_HEADER":
-                    row.template_icon(icon_value=AuthoringData.data["type_thumbnail"])
-                    row.operator("bim.launch_type_manager", text=AuthoringData.data["relating_type_name"], emboss=False)
-                else:
-                    row.operator(
-                        "bim.launch_type_manager",
-                        icon="BLANK1",
-                        text=AuthoringData.data["relating_type_name"],
-                        emboss=False,
-                    )
+        if not AuthoringData.data["ifc_classes"]:
+            return
+        if not (ifc_class := AuthoringData.data["ifc_class_current"]):
+            return
 
-                row.operator(
-                    "bim.launch_type_manager",
-                    icon=tool.Blender.TYPE_MANAGER_ICON,
-                    text="",
-                    emboss=False,
-                )
+        box = cls.layout.box()
 
-                if ui_context != "TOOL_HEADER":
-                    row = box.row(align=True)
-                    row.alignment = "CENTER"
-                    row.operator(
-                        "bim.launch_type_manager",
-                        text=AuthoringData.data["relating_type_description"],
-                        emboss=False,
-                    )
+        row = box.row(align=True)
+        thumbnail: int = AuthoringData.data["type_thumbnail"]
+        row.template_icon(icon_value=thumbnail)
+        row.operator("bim.launch_type_manager", text=AuthoringData.data["relating_type_name"], emboss=False)
+        row.operator(
+            "bim.launch_type_manager",
+            icon=tool.Blender.TYPE_MANAGER_ICON,
+            text="",
+            emboss=False,
+        )
 
-                    if AuthoringData.data["type_thumbnail"]:
-                        row1 = box.row()
-                        row1.ui_units_y = 0.01
-                        row1.template_icon(icon_value=AuthoringData.data["type_thumbnail"], scale=4)
-                        row2 = box.column(align=True)
-                        row2.ui_units_y = 4
-                        for _ in range(4):
-                            row2.operator("bim.launch_type_manager", text="", emboss=False)
-                    else:
-                        op = box.operator(
-                            "bim.load_type_thumbnails",
-                            text="",
-                            icon="FILE_REFRESH",
-                            emboss=False,
-                        )
-                        op.ifc_class = ifc_class
+        if ui_context == "TOOL_HEADER":
+            return
+        row = box.row(align=True)
+        row.alignment = "CENTER"
+        row.operator(
+            "bim.launch_type_manager",
+            text=AuthoringData.data["relating_type_description"],
+            emboss=False,
+        )
 
-                    row = box.row(align=True)
-                    row.alignment = "CENTER"
-                    row.operator(
-                        "bim.launch_type_manager",
-                        text=AuthoringData.data["predefined_type"],
-                        emboss=False,
-                    )
+        if thumbnail != 0:
+            row1 = box.row()
+            row1.ui_units_y = 0.01
+            row1.template_icon(icon_value=thumbnail, scale=4)
+            row2 = box.column(align=True)
+            row2.ui_units_y = 4
+            for _ in range(4):
+                row2.operator("bim.launch_type_manager", text="", emboss=False)
+        else:
+            op = box.operator(
+                "bim.load_type_thumbnails",
+                text="",
+                icon="FILE_REFRESH",
+                emboss=False,
+            )
+            op.ifc_class = ifc_class
+
+        row = box.row(align=True)
+        row.alignment = "CENTER"
+        row.operator(
+            "bim.launch_type_manager",
+            text=AuthoringData.data["predefined_type"],
+            emboss=False,
+        )
 
 
 class EditObjectUI:
@@ -594,8 +575,7 @@ class EditObjectUI:
                 row = cls.layout.row(align=True)
                 op = row.operator("bim.disable_aggregate_mode", text="", icon="X")
                 op = row.operator("bim.toggle_aggregate_mode_local_view", text="", icon="ZOOM_SELECTED")
-                op = row.operator("bim.aggregate_assign_new_objects_in_aggregate_mode", text="", icon="CUBE")
-                
+
             text = format_ifc_camel_case(AuthoringData.data["active_class"])
             layout.label(text=f"{text} Edit Tools:", icon="RESTRICT_SELECT_OFF")
             cls.draw_parameter_adjustments(context)
@@ -800,8 +780,9 @@ class EditObjectUI:
             op_icon = custom_icon_previews["APPLY_VOID"].icon_id
             row = cls.layout.row(align=True) if ui_context != "TOOL_HEADER" else row
             row.operator("bim.add_opening", text=op_text, icon_value=op_icon)
-            row.label(text="", icon="EVENT_SHIFT")
-            row.label(text="", icon="EVENT_O")
+            if ui_context != "TOOL_HEADER":
+                row.label(text="", icon="EVENT_SHIFT")
+                row.label(text="", icon="EVENT_O")
         else:
             op_text = "Add Void" if ui_context != "TOOL_HEADER" else ""
             op_icon = custom_icon_previews["ADD_VOID"].icon_id
@@ -956,47 +937,42 @@ class Hotkey(bpy.types.Operator, tool.Ifc.Operator):
             row.prop(self, "z")
 
     def hotkey_S_A(self):
-        props = bpy.context.scene.BIMModelProperties
-        relating_type_id = AuthoringData.data["relating_type_id_current"]
-        if relating_type_id is None:
-            self.report({"ERROR"}, "No relating type selected")
-            return
-        props.relating_type_id = relating_type_id
         if bpy.context.scene.BIMGeometryProperties.mode == "ITEM":
             bpy.ops.wm.call_menu(name="BIM_MT_add_representation_item")
-        else:
-            # Slab from walls
-            walls = False
-            for obj in bpy.context.selected_objects:
-                walls = tool.Ifc.get_entity(obj).is_a("IfcWall")
-            if (
-                walls
-                and relating_type_id
-                and tool.Model.get_usage_type(tool.Ifc.get().by_id(int(relating_type_id))) == "LAYER3"
-            ):
-                bpy.ops.bim.draw_slab_from_wall("INVOKE_DEFAULT")
-                return {"FINISHED"}
-            # Walls from slab
-            slab = tool.Ifc.get_entity(bpy.context.active_object)
-            if (
-                slab
-                and slab.is_a("IfcSlab")
-                and relating_type_id
-                and tool.Model.get_usage_type(tool.Ifc.get().by_id(int(relating_type_id))) == "LAYER2"
-            ):
-                bpy.ops.bim.draw_walls_from_slab("INVOKE_DEFAULT")
-                return {"FINISHED"}
+            return
 
-            for obj in tool.Blender.get_selected_objects():
-                obj.select_set(False)
-            if relating_type_id and tool.Model.get_usage_type(tool.Ifc.get().by_id(int(relating_type_id))) == "LAYER2":
-                bpy.ops.bim.draw_polyline_wall("INVOKE_DEFAULT")
-            elif (
-                relating_type_id and tool.Model.get_usage_type(tool.Ifc.get().by_id(int(relating_type_id))) == "LAYER3"
-            ):
-                bpy.ops.bim.draw_polyline_slab("INVOKE_DEFAULT")
-            else:
-                bpy.ops.bim.add_occurrence("INVOKE_DEFAULT")
+        props = bpy.context.scene.BIMModelProperties
+        relating_type_class = AuthoringData.data["ifc_class_current"]
+        if not (relating_type_id := tool.Blender.get_enum_safe(props, "relating_type_id")):
+            self.report({"ERROR"}, "No relating type selected")
+            return
+
+        relating_type = tool.Ifc.get().by_id(int(relating_type_id))
+
+        has_only_walls_selected = tool.Blender.get_selected_objects() and all(
+            (e := tool.Ifc.get_entity(o)) and e.is_a("IfcWall") for o in tool.Blender.get_selected_objects()
+        )
+
+        if tool.Model.get_usage_type(relating_type) == "LAYER3" and has_only_walls_selected:
+            return bpy.ops.bim.draw_slab_from_wall("INVOKE_DEFAULT")
+        elif (
+            (active_obj := tool.Blender.get_active_object())
+            and (active_element := tool.Ifc.get_entity(active_obj))
+            and active_element.is_a("IfcSlab")
+            and tool.Model.get_usage_type(relating_type) == "LAYER2"
+        ):
+            return bpy.ops.bim.draw_walls_from_slab("INVOKE_DEFAULT")
+
+        for obj in tool.Blender.get_selected_objects():
+            obj.select_set(False)
+
+        if tool.Model.get_usage_type(relating_type) == "LAYER2":
+            return bpy.ops.bim.draw_polyline_wall("INVOKE_DEFAULT")
+        elif tool.Model.get_usage_type(relating_type) == "LAYER3":
+            return bpy.ops.bim.draw_polyline_slab("INVOKE_DEFAULT")
+        elif tool.Model.get_usage_type(relating_type) == "PROFILE" and relating_type_class != "IfcColumnType":
+            return bpy.ops.bim.draw_polyline_profile("INVOKE_DEFAULT")
+        return bpy.ops.bim.add_occurrence("INVOKE_DEFAULT")
 
     def hotkey_S_Q(self):
         if not bpy.context.selected_objects:
@@ -1024,7 +1000,7 @@ class Hotkey(bpy.types.Operator, tool.Ifc.Operator):
             bpy.ops.bim.align_product(align_type="CENTERLINE")
 
     def hotkey_S_E(self):
-        if not bpy.context.selected_objects:
+        if not bpy.context.selected_objects or not (active_object := bpy.context.active_object):
             return
 
         # NOTE: placing it before the other operations because railing can also be SweptSolid
@@ -1044,7 +1020,7 @@ class Hotkey(bpy.types.Operator, tool.Ifc.Operator):
         elif tool.Model.is_parametric_window_active() or tool.Model.is_parametric_door_active():
             return
 
-        selected_usages = {}
+        selected_usages: dict[str, list[bpy.types.Object]] = {}
         for obj in bpy.context.selected_objects:
             element = tool.Ifc.get_entity(obj)
             if not element:
@@ -1062,6 +1038,10 @@ class Hotkey(bpy.types.Operator, tool.Ifc.Operator):
             selected_usages.setdefault(usage, []).append(obj)
 
         if len(bpy.context.selected_objects) == 1:
+            # Active object was probably unselected because it doesn't have a usage.
+            if bpy.context.selected_objects[0] != active_object:
+                return
+
             if self.active_material_usage == "LAYER3":
                 # Edit LAYER3 profile
                 if bpy.context.active_object and bpy.context.active_object.mode == "OBJECT":

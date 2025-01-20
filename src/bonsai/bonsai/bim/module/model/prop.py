@@ -43,6 +43,9 @@ def get_boundary_class(self, context):
 def get_relating_type_id(self, context):
     if not AuthoringData.is_loaded:
         AuthoringData.load()
+    else:
+        AuthoringData.data["type_elements"] = AuthoringData.type_elements()
+        AuthoringData.data["relating_type_id"] = AuthoringData.relating_type_id()
     return AuthoringData.data["relating_type_id"]
 
 
@@ -65,10 +68,14 @@ def update_relating_type_id(self, context):
     AuthoringData.data["relating_type_name"] = AuthoringData.relating_type_name()
     AuthoringData.data["type_thumbnail"] = AuthoringData.type_thumbnail()
     AuthoringData.data["predefined_type"] = AuthoringData.predefined_type()
+    self.type_page = [e[0] for e in AuthoringData.data["relating_type_id"]].index(self.relating_type_id) // 9 + 1
 
 
 def update_type_page(self, context):
     AuthoringData.data["paginated_relating_types"] = AuthoringData.paginated_relating_types()
+    bpy.ops.bim.load_type_thumbnails(ifc_class=self.ifc_class, offset=9 * (self.type_page - 1), limit=9)
+    self["type_page"] = min(self["type_page"], AuthoringData.data["total_pages"])
+    self["type_page"] = max(self["type_page"], 1)
 
 
 def update_relating_array_from_object(self, context):
@@ -97,10 +104,31 @@ def update_slab_direction_decorator(self, context):
         SlabDirectionDecorator.uninstall()
 
 
+def update_search_name(self, context):
+    AuthoringData.load()
+    # Total number of pages may decrease when using the search bar :
+    if self.type_page > AuthoringData.data["total_pages"]:
+        self.type_page = max(1, AuthoringData.data["total_pages"])
+    bpy.ops.bim.load_type_thumbnails(ifc_class=self.ifc_class)
+
+
+def update_x_angle(self, context):
+    angle_deg = math.degrees(self.x_angle)
+    if tool.Cad.is_x(angle_deg, -90, 0.5) or tool.Cad.is_x(angle_deg, 90, 0.5):
+        self.x_angle = 0
+
+
 class BIMModelProperties(PropertyGroup):
     ifc_class: bpy.props.EnumProperty(items=get_ifc_class, name="Construction Class", update=update_ifc_class)
     relating_type_id: bpy.props.EnumProperty(
         items=get_relating_type_id, name="Relating Type", update=update_relating_type_id
+    )
+    search_name: bpy.props.StringProperty(
+        name="Search Name",
+        default="",
+        description="Use this property to filter the list of available types",
+        update=update_search_name,
+        options={"SKIP_SAVE", "TEXTEDIT_UPDATE"},
     )
     menu_relating_type_id: bpy.props.IntProperty()
     icon_id: bpy.props.IntProperty()
@@ -161,8 +189,10 @@ class BIMModelProperties(PropertyGroup):
     rl2: bpy.props.FloatProperty(name="RL", default=1, subtype="DISTANCE", description="Z offset for windows")
     # Used for plan calculation points such as in room generation
     rl3: bpy.props.FloatProperty(name="RL", default=1, subtype="DISTANCE", description="Z offset for space calculation")
-    x_angle: bpy.props.FloatProperty(name="X Angle", default=0, subtype="ANGLE", min=-pi / 180 * 89, max=pi / 180 * 89)
-    type_page: bpy.props.IntProperty(name="Type Page", default=1, update=update_type_page)
+    type_page: bpy.props.IntProperty(name="Type Page", default=1, min=1, update=update_type_page)
+    x_angle: bpy.props.FloatProperty(
+        name="X Angle", default=0, subtype="ANGLE", min=math.radians(-180), max=math.radians(180), update=update_x_angle
+    )
     type_name: bpy.props.StringProperty(name="Name", default="TYPEX")
     boundary_class: bpy.props.EnumProperty(items=get_boundary_class, name="Boundary Class")
     direction_sense: bpy.props.EnumProperty(
@@ -220,6 +250,24 @@ class BIMArrayProperties(PropertyGroup):
     )
 
 
+def update_total_length_target(self, context):
+    self["tread_run"] = self.total_length_target / (self.number_of_treads + 1)
+
+
+def update_tread_run(self, context):
+    if self.total_length_lock:
+        self["number_of_treads"] = int((self.total_length_target / self.tread_run) - 1)
+    else:
+        self["total_length_target"] = (self.number_of_treads + 1) * self.tread_run
+
+
+def update_number_of_treads(self, context):
+    if self.total_length_lock:
+        self["tread_run"] = self.total_length_target / (self.number_of_treads + 1)
+    else:
+        self["total_length_target"] = (self.number_of_treads + 1) * self.tread_run
+
+
 class BIMStairProperties(PropertyGroup):
     def validate_nosing_value(self, context):
         if self.stair_type != "WOOD/STEEL" and self.nosing_length < 0:
@@ -235,9 +283,26 @@ class BIMStairProperties(PropertyGroup):
     is_editing: bpy.props.BoolProperty(default=False)
     width: bpy.props.FloatProperty(name="Width", default=1.2, soft_min=0.01, subtype="DISTANCE")
     height: bpy.props.FloatProperty(name="Height", default=1.0, soft_min=0.01, subtype="DISTANCE")
-    number_of_treads: bpy.props.IntProperty(name="Number of Treads", default=6, soft_min=1)
+    number_of_treads: bpy.props.IntProperty(
+        name="Number of Treads", default=6, soft_min=1, update=update_number_of_treads
+    )
+    total_length_target: bpy.props.FloatProperty(
+        name="Total Length Target",
+        default=3.0,
+        soft_min=0.01,
+        subtype="DISTANCE",
+        update=update_total_length_target,
+        description="Total Length Target, might not be exactly respected depending on the parameters",
+    )
+    total_length_lock: bpy.props.BoolProperty(
+        default=False,
+        name="Lock Total Length",
+        description="Lock Total Length when changing number of treads or tread run",
+    )
     tread_depth: bpy.props.FloatProperty(name="Tread Depth", default=0.25, soft_min=0.01, subtype="DISTANCE")
-    tread_run: bpy.props.FloatProperty(name="Tread Run", default=0.3, soft_min=0.01, subtype="DISTANCE")
+    tread_run: bpy.props.FloatProperty(
+        name="Tread Run", default=0.3, soft_min=0.01, subtype="DISTANCE", update=update_tread_run
+    )
     base_slab_depth: bpy.props.FloatProperty(name="Base Slab Depth", default=0.25, soft_min=0, subtype="DISTANCE")
     top_slab_depth: bpy.props.FloatProperty(name="Top Slab Depth", default=0.25, soft_min=0, subtype="DISTANCE")
     has_top_nib: bpy.props.BoolProperty(name="Has Top Nib", default=True)
@@ -764,7 +829,9 @@ class BIMRoofProperties(PropertyGroup):
         soft_max=to_percentage(radians(60.0)),
     )
     roof_thickness: bpy.props.FloatProperty(name="Roof Thickness", default=0.1, subtype="DISTANCE")
-    rafter_edge_angle: bpy.props.FloatProperty(name="Rafter Edge Angle", min=0, max=pi, default=pi / 2, subtype="ANGLE")
+    rafter_edge_angle: bpy.props.FloatProperty(
+        name="Rafter Edge Angle", min=0, max=pi / 2, default=pi / 2, subtype="ANGLE"
+    )
 
     def get_general_kwargs(self, generation_method=None, convert_to_project_units=False):
         if generation_method is None:
@@ -820,3 +887,14 @@ class BIMPolylineProperties(PropertyGroup):
     snap_mouse_ref: bpy.props.CollectionProperty(type=SnapMousePoint)
     insertion_polyline: bpy.props.CollectionProperty(type=Polyline)
     measurement_polyline: bpy.props.CollectionProperty(type=Polyline)
+
+
+class ProductPreviewItem(PropertyGroup):
+    value_3d: bpy.props.FloatVectorProperty()
+    value_2d: bpy.props.FloatVectorProperty(size=2)
+
+
+class BIMProductPreviewProperties(PropertyGroup):
+    verts: bpy.props.CollectionProperty(type=ProductPreviewItem)
+    edges: bpy.props.CollectionProperty(type=ProductPreviewItem)
+    tris: bpy.props.CollectionProperty(type=ProductPreviewItem)
