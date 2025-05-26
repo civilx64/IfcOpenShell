@@ -34,11 +34,11 @@ def add_segment_to_layout(file: ifcopenshell.file, alignment: entity_instance, s
     expected_types = ["IfcAlignmentHorizontal", "IfcAlignmentVertical", "IfcAlignmentCant"]
     if not alignment.is_a() in expected_types:
         raise TypeError(
-            f"Expected entity type to be one of {[_ for _ in expected_types]}, instead received '{alignment.is_a()}"
+            f"Expected entity type to be one of {[_ for _ in expected_types]}, instead received {alignment.is_a()}"
         )
 
     if not (segment.is_a("IfcAlignmentSegment")):
-        raise TypeError(f"Expected to see IfcAlignmentSegment, instead received '{segment.is_a()}.")
+        raise TypeError(f"Expected to see IfcAlignmentSegment, instead received {segment.is_a()}.")
 
     zero_length_segment = (
         ifcopenshell.api.alignment.remove_zero_length_segment(file, alignment)

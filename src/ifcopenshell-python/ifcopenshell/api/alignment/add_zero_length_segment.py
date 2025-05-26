@@ -42,23 +42,29 @@ def add_zero_length_segment(file: ifcopenshell.file, entity: entity_instance) ->
     ]
     if not entity.is_a() in expected_types:
         raise TypeError(
-            f"Expected entity type to be one of {[_ for _ in expected_types]}, instead received '{entity.is_a()}"
+            f"Expected entity type to be one of {[_ for _ in expected_types]}, instead received {entity.is_a()}"
         )
 
     if ifcopenshell.api.alignment.has_zero_length_segment(entity):
         return  # do nothing if the entity already has a zero length segment
 
     if entity.is_a("IfcCompositeCurve"):
-        last_segment = entity.Segments[-1]
-        settings = ifcopenshell.geom.settings()
-        segment_fn = ifcopenshell_wrapper.map_shape(settings, last_segment.wrapped_data)
-        segment_evaluator = ifcopenshell_wrapper.function_item_evaluator(settings, segment_fn)
-        e = segment_evaluator.evaluate(segment_fn.end())
-        end = np.array(e)
-        x = float(end[0, 3])
-        y = float(end[1, 3])
-        dx = float(end[0, 0])
-        dy = float(end[1, 0])
+        x = 0.
+        y = 0.
+        dx = 1.
+        dy = 0.
+        
+        last_segment = entity.Segments[-1] if 0 < len(entity.Segments) else None
+        if last_segment:
+            settings = ifcopenshell.geom.settings()
+            segment_fn = ifcopenshell_wrapper.map_shape(settings, last_segment.wrapped_data)
+            segment_evaluator = ifcopenshell_wrapper.function_item_evaluator(settings, segment_fn)
+            e = segment_evaluator.evaluate(segment_fn.end())
+            end = np.array(e)
+            x = float(end[0, 3])
+            y = float(end[1, 3])
+            dx = float(end[0, 0])
+            dy = float(end[1, 0])
 
         parent_curve = file.createIfcLine(
             Pnt=file.createIfcCartesianPoint(Coordinates=((0.0, 0.0))),
@@ -79,76 +85,77 @@ def add_zero_length_segment(file: ifcopenshell.file, entity: entity_instance) ->
         )
         ifcopenshell.api.alignment.add_segment_to_curve(file, curve_segment, entity)
     else:
-        for rel in entity.IsNestedBy:
-            if 0 < len(rel.RelatedObjects):
-                last_segment = rel.RelatedObjects[-1]
-                if last_segment.is_a("IfcAlignmentSegment"):
-                    if entity.is_a("IfcAlignmentHorizontal"):
-                        design_parameters = file.createIfcAlignmentHorizontalSegment(
-                            StartPoint=file.createIfcCartesianPoint(
-                                (0.0, 0.0)
-                            ),  # this is a little problematic. need to know the end point and tangent
-                            StartDirection=0.0,  # of the previous segment, which requires geometry mapping
-                            SegmentLength=0.0,
-                            PredefinedType="LINE",
-                        )
-                        segment = file.createIfcAlignmentSegment(
-                            GlobalId=ifcopenshell.guid.new(), DesignParameters=design_parameters
-                        )
-                        ifcopenshell.api.nest.assign_object(
-                            file,
-                            related_objects=[
-                                segment,
-                            ],
-                            relating_object=entity,
-                        )
-                        break
-                    elif entity.is_a("IfcAlignmentVertical"):
-                        design_parameters = file.createIfcAlignmentVerticalSegment(
-                            StartDistAlong=last_segment.DesignParameters.StartDistAlong
-                            + last_segment.DesignParameters.HorizontalLength,
-                            HorizontalLength=0.0,
-                            StartHeight=0.0,
-                            StartGradient=last_segment.DesignParameters.EndGradient,
-                            EndGradient=last_segment.DesignParameters.EndGradient,
-                            PredefinedType="CONSTANTGRADIENT",
-                        )
-                        segment = file.createIfcAlignmentSegment(
-                            GlobalId=ifcopenshell.guid.new(), DesignParameters=design_parameters
-                        )
-                        ifcopenshell.api.nest.assign_object(
-                            file,
-                            related_objects=[
-                                segment,
-                            ],
-                            relating_object=entity,
-                        )
-                        break
-                    elif entity.is_a("IfcAlignmentCant"):
-                        design_parameters = file.createIfcAlignmentCantSegment(
-                            StartDistAlong=last_segment.DesignParameters.StartDistAlong
-                            + last_segment.DesignParameters.HorizontalLength,
-                            HorizontalLength=0.0,
-                            StartCantLeft=(
-                                last_segment.DesignParameters.EndCantLeft
-                                if last_segment.DesignParameters.EndCantLeft != None
-                                else last_segment.DesignParameters.StartCantLeft
-                            ),
-                            StartCantRight=(
-                                last_segment.DesignParameters.EndCantRight
-                                if last_segment.DesignParameters.EndCantRight != None
-                                else last_segment.DesignParameters.StartCantRight
-                            ),
-                            PredefinedType="CONSTANTCANT",
-                        )
-                        segment = file.createIfcAlignmentSegment(
-                            GlobalId=ifcopenshell.guid.new(), DesignParameters=design_parameters
-                        )
-                        ifcopenshell.api.nest.assign_object(
-                            file,
-                            related_objects=[
-                                segment,
-                            ],
-                            relating_object=entity,
-                        )
-                        break
+        if entity.is_a("IfcAlignmentHorizontal"):
+            design_parameters = file.createIfcAlignmentHorizontalSegment(
+                StartPoint=file.createIfcCartesianPoint(
+                    (0.0, 0.0)
+                ),  # this is a little problematic. need to know the end point and tangent
+                StartDirection=0.0,  # of the previous segment, which requires geometry mapping
+                SegmentLength=0.0,
+                PredefinedType="LINE",
+            )
+            segment = file.createIfcAlignmentSegment(
+                GlobalId=ifcopenshell.guid.new(), DesignParameters=design_parameters
+            )
+            ifcopenshell.api.nest.assign_object(
+                file,
+                related_objects=[
+                    segment,
+                ],
+                relating_object=entity,
+            )
+        elif entity.is_a("IfcAlignmentVertical"):
+            last_segment_dist_along = 0.
+            last_segment_end_gradient = 0.
+            for rel in entity.IsNestedBy:
+                if 0 < len(rel.RelatedObjects):
+                    last_segment = rel.RelatedObjects[1]
+                    last_segment_dist_along = last_segment.DesignParameters.StartDistAlong + last_segment.DesignParameters.HorizontalLength
+                    last_segment_end_gradient = last_segment.DesignParameters.EndGradient
+
+            design_parameters = file.createIfcAlignmentVerticalSegment(
+                StartDistAlong=last_segment_dist_along,
+                HorizontalLength=0.0,
+                StartHeight=0.0,
+                StartGradient=last_segment_end_gradient,
+                EndGradient=last_segment_end_gradient,
+                PredefinedType="CONSTANTGRADIENT",
+            )
+            segment = file.createIfcAlignmentSegment(
+                GlobalId=ifcopenshell.guid.new(), DesignParameters=design_parameters
+            )
+            ifcopenshell.api.nest.assign_object(
+                file,
+                related_objects=[
+                    segment,
+                ],
+                relating_object=entity,
+            )
+        elif entity.is_a("IfcAlignmentCant"):
+            last_segment_dist_along = 0.
+            last_segment_cant_left = 0.
+            last_segment_cant_right = 0.
+            for rel in entity.IsNestedBy:
+                if 0 < len(rel.RelatedObjects):
+                    last_segment = rel.RelatedObjects[1]
+                    last_segment_dist_along = last_segment.DesignParameters.StartDistAlong + last_segment.DesignParameters.HorizontalLength
+                    last_segment_cant_left = last_segment.DesignParameters.EndCantLeft if last_segment.DesignParameters.EndCantLeft != None else last_segment.DesignParameters.StartCantLeft
+                    last_segment_cant_right = last_segment.DesignParameters.EndCantRight if last_segment.DesignParameters.EndCantRight != None else last_segment.DesignParameters.StartCantRight
+
+            design_parameters = file.createIfcAlignmentCantSegment(
+                StartDistAlong=last_segment_dist_along,
+                HorizontalLength=0.0,
+                StartCantLeft=last_segment_cant_left,
+                StartCantRight=last_segment_cant_right,
+                PredefinedType="CONSTANTCANT",
+            )
+            segment = file.createIfcAlignmentSegment(
+                GlobalId=ifcopenshell.guid.new(), DesignParameters=design_parameters
+            )
+            ifcopenshell.api.nest.assign_object(
+                file,
+                related_objects=[
+                    segment,
+                ],
+                relating_object=entity,
+            )

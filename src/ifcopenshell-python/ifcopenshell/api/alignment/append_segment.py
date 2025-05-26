@@ -1,0 +1,127 @@
+# IfcOpenShell - IFC toolkit and geometry engine
+# Copyright (C) 2025 Thomas Krijnen <thomas@aecgeeks.com>
+#
+# This file is part of IfcOpenShell.
+#
+# IfcOpenShell is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Lesser General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# IfcOpenShell is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with IfcOpenShell.  If not, see <http://www.gnu.org/licenses/>.
+
+import ifcopenshell
+import ifcopenshell.api.alignment
+import ifcopenshell.api.alignment.get_alignment
+import ifcopenshell.geom
+from ifcopenshell import entity_instance
+import math
+from ifcopenshell import ifcopenshell_wrapper
+import numpy as np
+
+
+def append_segment(file: ifcopenshell.file, layout: entity_instance, design_parameters: entity_instance) -> entity_instance:
+    """
+    Appends a segment to an alignment layout and creates the corresponding geometric representation.
+
+    :param layout: The layout to extend. This parameter is expected to be IfcAlignmentHorizontal, IfcAlignmentVertical or IfcAlignmentCant
+    :param design_parameters: The parameters defining the segment. Expected to be the appropreate subclass of IfcAlignmentParameterSegment
+    :return: ???
+    """
+    expected_types = ["IfcAlignmentHorizontal", "IfcAlignmentVertical", "IfcAlignmentCant"]
+    if not layout.is_a() in expected_types:
+        raise TypeError(
+            f"Expected entity type to be one of {[_ for _ in expected_types]}, instead received {layout.is_a()}"
+        )
+    
+    if layout.is_a("IfcAlignmentHorizontal") and not design_parameters.is_a("IfcAlignmentHorizontalSegment"):
+        raise TypeError("Expected design_parameters to be IfcAlignmentHorizontalSegment")
+    elif layout.is_a("IfcAlignmentVertical") and not design_parameters.is_a("IfcAlignmentVerticalSegment"):
+        raise TypeError("Expected design_parameters to be IfcAlignmentVerticalSegment")
+    elif layout.is_a("IfcAlignmentCant") and not design_parameters.is_a("IfcAlignmentCantSegment"):
+        raise TypeError("Expected design_parameters to be IfcAlignmentCantSegment")
+    
+    
+    segment = file.createIfcAlignmentSegment(GlobalId=ifcopenshell.guid.new(),DesignParameters=design_parameters)
+
+    alignment = ifcopenshell.api.alignment.get_alignment(layout)
+    curve = ifcopenshell.api.alignment.get_curve(alignment)
+    if layout.is_a("IfcAlignmentHoriztonal") and not curve.is_a("IfcCompositeCurve"):
+        if curve.is_a("IfcGradientCurve"):
+            curve = curve.BaseCurve
+        else:
+            curve = curve.BaseCurve.BaseCurve
+    elif layout.is_a("IfcAlignmentVertical") and not curve.is_a("IfcGradientCurve"):
+        assert curve.is_a("IfcSegmentedReferenceCurve")
+        curve = curve.BaseCurve
+    elif layout.is_a("IfcAlignmentCant") and not curve.is_a("IfcSegmentedReferenceCurve"):
+        assert(False)
+  
+
+    ifcopenshell.api.alignment.add_segment_to_layout(file,layout,segment)
+
+    mapped_segments = []
+    if layout.is_a("IfcAlignmentHorizontal"):
+        mapped_segments = ifcopenshell.api.alignment.map_alignment_horizontal_segment(file, segment)
+    elif layout.is_a("IfcAlignmentVertical"):
+        mapped_segments = ifcopenshell.api.alignment.map_alignment_vertical_segment(file, segment)
+    elif layout.is_a("IfcAlignmentCant"):
+        mapped_segments = ifcopenshell.api.alignment.map_alignment_cant_segment(file, layout, alignment.RailHeadDistance)
+
+    for mapped_segment in mapped_segments:
+        if mapped_segment:
+            ifcopenshell.api.alignment.add_segment_to_curve(file,mapped_segment,curve)
+
+    # the new segment is two from the end... the end segment is zero length
+    curve_segment = curve.Segments[-2]
+
+    settings = ifcopenshell.geom.settings()
+
+    segment_fn = ifcopenshell_wrapper.map_shape(settings, curve_segment.wrapped_data)
+    segment_evaluator = ifcopenshell_wrapper.function_item_evaluator(settings, segment_fn)
+    e = segment_evaluator.evaluate(segment_fn.end())
+    end = np.array(e)
+
+    dp = None
+    if layout.is_a("IfcAlignmentHorizontal"):
+        x = end[:3][0]
+        y = end[:3][1]
+        dx = end[:0][0]
+        dy = end[:0][1]
+
+        dp = file.createIfcAlignmentHorizontalSegment(
+            StartPoint=file.createIfcCartesianPoint((x,y)),
+            StartDirection=math.atan2(dy,dx)
+        )
+    elif layout.is_a("IfcAlignmentVertical"):
+        x = end[:3][0]
+        y = end[:3][1]
+        dx = end[:0][0]
+        dy = end[:0][1]
+
+        dp = file.createIfcAlignmentVerticalSegment(
+            StartDistanceAlong=x,
+            StartHeight=y,
+            StartGradient=math.atan2(dy,dx)
+        )
+    else:
+        x = end[:3][0]
+        y = end[:3][1]
+        dx = end[:0][0]
+        dy = end[:0][1]
+
+        dp = file.createIfcAlignmentCantSegment(
+            StartDistanceAlong=x,
+            StartCantLeft=999, #using bad numbers to remind me to fix this later
+            StartCantRight=999
+        )
+
+    return dp
+
+

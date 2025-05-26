@@ -46,12 +46,19 @@ from .add_stationing_to_alignment import add_stationing_to_alignment
 from .add_vertical_alignment_by_pi_method import add_vertical_alignment_by_pi_method
 from .add_vertical_alignment import add_vertical_alignment
 from .add_zero_length_segment import add_zero_length_segment
+from .append_segment import append_segment
+from .create_alignment import create_alignment
 from .create_alignment_by_pi_method import create_alignment_by_pi_method
 from .create_alignment_from_csv import create_alignment_from_csv
 from .create_horizontal_alignment_by_pi_method import create_horizontal_alignment_by_pi_method
 from .create_geometric_representation import create_geometric_representation
 from .create_vertical_alignment_by_pi_method import create_vertical_alignment_by_pi_method
 from .distance_along_from_station import distance_along_from_station
+from .get_alignment import get_alignment
+from .get_alignment_segments import get_alignment_segments
+from .get_horizontal_alignment import get_horizontal_alignment
+from .get_vertical_alignment import get_vertical_alignment
+from .get_cant_alignment import get_cant_alignment
 from .get_alignment_layouts import get_alignment_layouts
 from .get_axis_subcontext import get_axis_subcontext
 from .get_basis_curve import get_basis_curve
@@ -76,12 +83,19 @@ __all__ = [
     "add_vertical_alignment_by_pi_method",
     "add_vertical_alignment",
     "add_zero_length_segment",
+    "append_segment",
+    "create_alignment",
     "create_alignment_by_pi_method",
     "create_alignment_from_csv",
     "create_horizontal_alignment_by_pi_method",
     "create_geometric_representation",
     "create_vertical_alignment_by_pi_method",
     "distance_along_from_station",
+    "get_alignment",
+    "get_alignment_segments",
+    "get_horizontal_alignment",
+    "get_vertical_alignment",
+    "get_cant_alignment",
     "get_alignment_layouts",
     "get_axis_subcontext",
     "get_basis_curve",

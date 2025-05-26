@@ -50,7 +50,8 @@ def remove_last_segment(file: ifcopenshell.file, entity: entity_instance) -> ent
     if entity.is_a("IfcCompositeCurve"):
         last_segment = entity.Segments[-1]
         entity.Segments = tuple(set(entity.Segments) - {last_segment})
-        entity.Segments[-1].Transition = "DISCONTINUOUS"
+        if 0 < len(entity.Segments):
+            entity.Segments[-1].Transition = "DISCONTINUOUS"
         return last_segment
     else:
         components = ifcopenshell.util.element.get_components(entity)

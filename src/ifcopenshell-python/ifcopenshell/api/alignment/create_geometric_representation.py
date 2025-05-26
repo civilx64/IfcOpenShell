@@ -43,7 +43,7 @@ def create_geometric_representation(file: ifcopenshell.file, alignment: entity_i
 
     expected_type = "IfcAlignment"
     if not alignment.is_a(expected_type):
-        raise TypeError("Expected '{expected_type}' but got '{alignment.is_a()}'")
+        raise TypeError(f"Expected {expected_type} but got {alignment.is_a()}")
 
     placement = file.createIfcLocalPlacement(
         PlacementRelTo=None,

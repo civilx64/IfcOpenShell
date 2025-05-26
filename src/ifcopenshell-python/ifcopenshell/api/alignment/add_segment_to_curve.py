@@ -62,7 +62,7 @@ def add_segment_to_curve(file: ifcopenshell.file, segment: entity_instance, comp
             else None
         )
 
-        prev_segment = composite_curve.Segments[-1]
+        prev_segment = composite_curve.Segments[-1] if composite_curve.Segments != None and 0 < len(composite_curve.Segments) else None
 
         # the last segment is always discontinuous
         segment.Transition = "DISCONTINUOUS"
@@ -70,7 +70,8 @@ def add_segment_to_curve(file: ifcopenshell.file, segment: entity_instance, comp
         # must add the new segment to the curve before updating the transition code
         composite_curve.Segments += (segment,)
 
-        ifcopenshell.api.alignment.update_curve_segment_transition_code(prev_segment, segment)
+        if prev_segment:
+            ifcopenshell.api.alignment.update_curve_segment_transition_code(prev_segment, segment)
 
         if zero_length_segment:
-            ifcopenshell.api.alignment.add_segment_to_curve(zero_length_segment, composite_curve)
+            ifcopenshell.api.alignment.add_segment_to_curve(file, zero_length_segment, composite_curve)
