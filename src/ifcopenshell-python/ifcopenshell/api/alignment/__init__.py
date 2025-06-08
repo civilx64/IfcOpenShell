@@ -56,9 +56,9 @@ from .create_vertical_alignment_by_pi_method import create_vertical_alignment_by
 from .distance_along_from_station import distance_along_from_station
 from .get_alignment import get_alignment
 from .get_alignment_segments import get_alignment_segments
-from .get_horizontal_alignment import get_horizontal_alignment
-from .get_vertical_alignment import get_vertical_alignment
-from .get_cant_alignment import get_cant_alignment
+from .get_horizontal_layout import get_horizontal_layout
+from .get_vertical_layout import get_vertical_layout
+from .get_cant_layout import get_cant_layout
 from .get_alignment_layouts import get_alignment_layouts
 from .get_axis_subcontext import get_axis_subcontext
 from .get_basis_curve import get_basis_curve
@@ -93,9 +93,9 @@ __all__ = [
     "distance_along_from_station",
     "get_alignment",
     "get_alignment_segments",
-    "get_horizontal_alignment",
-    "get_vertical_alignment",
-    "get_cant_alignment",
+    "get_horizontal_layout",
+    "get_vertical_layout",
+    "get_cant_layout",
     "get_alignment_layouts",
     "get_axis_subcontext",
     "get_basis_curve",

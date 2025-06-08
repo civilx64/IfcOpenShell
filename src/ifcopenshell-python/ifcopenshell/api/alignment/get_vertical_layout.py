@@ -18,7 +18,7 @@
 
 from ifcopenshell import entity_instance
 
-def get_vertical_alignment(alignment: entity_instance) -> entity_instance:
+def get_vertical_layout(alignment: entity_instance) -> entity_instance:
     """
     Returns the IfcAlignmentVertical assocated with this alignment
     """
