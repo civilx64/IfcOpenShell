@@ -26,7 +26,7 @@ from ifcopenshell import ifcopenshell_wrapper
 import numpy as np
 
 
-def append_segment(file: ifcopenshell.file, layout: entity_instance, design_parameters: entity_instance) -> entity_instance:
+def append_segment(file: ifcopenshell.file, layout: entity_instance, design_parameters: entity_instance) -> np.array:
     """
     Appends a segment to an alignment layout and creates the corresponding geometric representation.
 
@@ -47,24 +47,21 @@ def append_segment(file: ifcopenshell.file, layout: entity_instance, design_para
     elif layout.is_a("IfcAlignmentCant") and not design_parameters.is_a("IfcAlignmentCantSegment"):
         raise TypeError("Expected design_parameters to be IfcAlignmentCantSegment")
     
-    
+    # create the segment and add it to the layout    
     segment = file.createIfcAlignmentSegment(GlobalId=ifcopenshell.guid.new(),DesignParameters=design_parameters)
+    ifcopenshell.api.alignment.add_segment_to_layout(file,layout,segment)
 
+    # create the geometric representation and add it to the appropreate curve
     alignment = ifcopenshell.api.alignment.get_alignment(layout)
     curve = ifcopenshell.api.alignment.get_curve(alignment)
-    if layout.is_a("IfcAlignmentHoriztonal") and not curve.is_a("IfcCompositeCurve"):
+    if layout.is_a("IfcAlignmentHorizontal"):
         if curve.is_a("IfcGradientCurve"):
             curve = curve.BaseCurve
-        else:
-            curve = curve.BaseCurve.BaseCurve
-    elif layout.is_a("IfcAlignmentVertical") and not curve.is_a("IfcGradientCurve"):
-        assert curve.is_a("IfcSegmentedReferenceCurve")
-        curve = curve.BaseCurve
-    elif layout.is_a("IfcAlignmentCant") and not curve.is_a("IfcSegmentedReferenceCurve"):
-        assert(False)
-  
-
-    ifcopenshell.api.alignment.add_segment_to_layout(file,layout,segment)
+        elif curve.is_a("IfcSegmentedReferenceCurve"):
+            curve = curve.BaseCurve.BaseCurve # layout is horizontal and curve is segmented ref ... we want the curve's base curve
+    elif layout.is_a("IfcAlignmentVertical") :
+        if curve.is_a("IfcSegmentedReferenceCurve"):
+            curve = curve.BaseCurve
 
     mapped_segments = []
     if layout.is_a("IfcAlignmentHorizontal"):
@@ -88,40 +85,4 @@ def append_segment(file: ifcopenshell.file, layout: entity_instance, design_para
     e = segment_evaluator.evaluate(segment_fn.end())
     end = np.array(e)
 
-    dp = None
-    if layout.is_a("IfcAlignmentHorizontal"):
-        x = end[:3][0]
-        y = end[:3][1]
-        dx = end[:0][0]
-        dy = end[:0][1]
-
-        dp = file.createIfcAlignmentHorizontalSegment(
-            StartPoint=file.createIfcCartesianPoint((x,y)),
-            StartDirection=math.atan2(dy,dx)
-        )
-    elif layout.is_a("IfcAlignmentVertical"):
-        x = end[:3][0]
-        y = end[:3][1]
-        dx = end[:0][0]
-        dy = end[:0][1]
-
-        dp = file.createIfcAlignmentVerticalSegment(
-            StartDistanceAlong=x,
-            StartHeight=y,
-            StartGradient=math.atan2(dy,dx)
-        )
-    else:
-        x = end[:3][0]
-        y = end[:3][1]
-        dx = end[:0][0]
-        dy = end[:0][1]
-
-        dp = file.createIfcAlignmentCantSegment(
-            StartDistanceAlong=x,
-            StartCantLeft=999, #using bad numbers to remind me to fix this later
-            StartCantRight=999
-        )
-
-    return dp
-
-
+    return end

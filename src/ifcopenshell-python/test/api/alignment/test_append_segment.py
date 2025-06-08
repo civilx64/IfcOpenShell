@@ -19,10 +19,10 @@
 import pytest
 import ifcopenshell.api.alignment
 import ifcopenshell.api.context
+from ifcopenshell import entity_instance
 import math
 
-
-def test_append_segment():
+def _test_horizontal() -> ifcopenshell.file:
     file = ifcopenshell.file(schema="IFC4X3_ADD2")
     project = file.createIfcProject(Name="Test")
     geometric_representation_context = ifcopenshell.api.context.add_context(file, context_type="Model")
@@ -34,8 +34,17 @@ def test_append_segment():
         parent=geometric_representation_context,
     )
 
+    # creates an IfcAlignment with an IfcAlignmentHorizontal layout containing only the zero length segment
     ali = ifcopenshell.api.alignment.create_alignment(file,"A1")
+
+    # append a segment to the horizontal layout
     horizontal_alignment = ifcopenshell.api.alignment.get_horizontal_alignment(ali)
+
+    curve = ifcopenshell.api.alignment.get_curve(horizontal_alignment)
+    assert curve == None # for single horizontal, geometric representation is on IfcAlignment
+    curve = ifcopenshell.api.alignment.get_curve(ali)
+    assert curve.is_a("IfcCompositeCurve")
+    assert len(curve.Segments) == 1
 
     design_parameters = file.create_entity(
         type="IfcAlignmentHorizontalSegment",
@@ -49,14 +58,205 @@ def test_append_segment():
         GravityCenterLineHeight=None,
         PredefinedType="LINE",
     )
+    end = ifcopenshell.api.alignment.append_segment(file,horizontal_alignment,design_parameters)
 
-    next_design_parameters = ifcopenshell.api.alignment.append_segment(file,horizontal_alignment,design_parameters)
-    ifcopenshell.api.alignment.util.print_alignment(horizontal_alignment)
-    assert len(horizontal_alignment.IsNestedBy) == 2
+    assert len(horizontal_alignment.IsNestedBy[0].RelatedObjects) == 2
 
-    next_design_parameters.SegmentLength = 50.0
-    next_design_parameters.StartDirection=math.pi()/6
+    x = end[:,3][0]
+    y = end[:,3][1]
+    z = end[:,3][2]
+    
+    assert x == 100.0
+    assert y == 0.0
+    assert z == 0.0
 
-    next_design_parameters = ifcopenshell.api.alignment.append_segment(file,horizontal_alignment,next_design_parameters)
-    ifcopenshell.api.alignment.util.print_alignment(horizontal_alignment)
-    assert len(horizontal_alignment.IsNestedBy) == 3
+    curve = ifcopenshell.api.alignment.get_curve(ali)
+    assert curve.is_a("IfcCompositeCurve")
+    assert len(curve.Segments) == 2
+
+
+    design_parameters = file.create_entity(
+        type="IfcAlignmentHorizontalSegment",
+        StartTag=None,
+        EndTag=None,
+        StartPoint=file.createIfcCartesianPoint(Coordinates=((x.item(), y.item()))),
+        StartDirection=math.pi/6,
+        StartRadiusOfCurvature=0.0,
+        EndRadiusOfCurvature=0.0,
+        SegmentLength=50.0,
+        GravityCenterLineHeight=None,
+        PredefinedType="LINE",
+    )
+
+    end = ifcopenshell.api.alignment.append_segment(file,horizontal_alignment,design_parameters)
+    assert len(horizontal_alignment.IsNestedBy[0].RelatedObjects) == 3
+
+    x = end[:,3][0]
+    y = end[:,3][1]
+    z = end[:,3][2]
+    
+    assert x == 100.0 + 50.0*math.cos(math.pi/6)
+    assert y == 50.0*math.sin(math.pi/6)
+    assert z == 0.0
+
+    curve = ifcopenshell.api.alignment.get_curve(ali)
+    assert curve.is_a("IfcCompositeCurve")
+    assert len(curve.Segments) == 3
+
+    return file
+
+
+def _test_horizontal_vertical():
+    file = ifcopenshell.file(schema="IFC4X3_ADD2")
+    project = file.createIfcProject(Name="Test")
+    geometric_representation_context = ifcopenshell.api.context.add_context(file, context_type="Model")
+    axis_model_representation_subcontext = ifcopenshell.api.context.add_context(
+        file,
+        context_type="Model",
+        context_identifier="Axis",
+        target_view="MODEL_VIEW",
+        parent=geometric_representation_context,
+    )
+
+    # creates an IfcAlignment with an IfcAlignmentHorizontal layout containing only the zero length segment
+    ali = ifcopenshell.api.alignment.create_alignment(file,"A1",True)
+
+    # append a segment to the horizontal layout
+    horizontal_alignment = ifcopenshell.api.alignment.get_horizontal_alignment(ali)
+    vertical_alignment = ifcopenshell.api.alignment.get_vertical_alignment(ali)
+
+    curve = ifcopenshell.api.alignment.get_curve(horizontal_alignment)
+    assert curve == None
+
+    curve = ifcopenshell.api.alignment.get_curve(vertical_alignment)
+    assert curve == None
+
+    basis_curve = ifcopenshell.api.alignment.get_basis_curve(ali)
+    assert basis_curve.is_a("IfcCompositeCurve")
+    curve = ifcopenshell.api.alignment.get_curve(ali)
+    assert curve.is_a("IfcGradientCurve")
+    assert len(basis_curve.Segments) == 1
+    assert len(curve.Segments) == 1
+
+    design_parameters = file.create_entity(
+        type="IfcAlignmentHorizontalSegment",
+        StartTag=None,
+        EndTag=None,
+        StartPoint=file.createIfcCartesianPoint(Coordinates=((0.0, 0.0))),
+        StartDirection=0.0,
+        StartRadiusOfCurvature=0.0,
+        EndRadiusOfCurvature=0.0,
+        SegmentLength=100.0,
+        GravityCenterLineHeight=None,
+        PredefinedType="LINE",
+    )
+    end = ifcopenshell.api.alignment.append_segment(file,horizontal_alignment,design_parameters)
+    basis_curve = ifcopenshell.api.alignment.get_basis_curve(ali)
+    assert basis_curve.is_a("IfcCompositeCurve")
+    assert len(basis_curve.Segments) == 2
+    
+    design_parameters = file.createIfcAlignmentVerticalSegment(
+        StartDistAlong=0.0,
+        HorizontalLength=50.0,
+        StartHeight=20.0,
+        StartGradient = 1./100.,
+        EndGradient = 1./100.,
+        PredefinedType="CONSTANTGRADIENT"
+        )
+    end = ifcopenshell.api.alignment.append_segment(file,vertical_alignment,design_parameters)
+
+    assert len(vertical_alignment.IsNestedBy[0].RelatedObjects) == 2
+
+    x = end[:,3][0]
+    y = end[:,3][1]
+    z = end[:,3][2]
+    
+    assert x == 50.
+    assert y == 20.5
+    assert z == 0.0
+
+    design_parameters = file.createIfcAlignmentVerticalSegment(
+        StartDistAlong=50.0,
+        HorizontalLength=50.0,
+        StartHeight=y.item(),
+        StartGradient = -1./100.,
+        EndGradient = -1./100.,
+        PredefinedType="CONSTANTGRADIENT"
+        )
+    end = ifcopenshell.api.alignment.append_segment(file,vertical_alignment,design_parameters)
+
+    assert len(vertical_alignment.IsNestedBy[0].RelatedObjects) == 3
+
+    x = end[:,3][0]
+    y = end[:,3][1]
+    z = end[:,3][2]
+    
+    assert x == 100.
+    assert y == 20.
+    assert z == 0.0
+
+    basis_curve = ifcopenshell.api.alignment.get_basis_curve(ali)
+    assert basis_curve.is_a("IfcCompositeCurve")
+    curve = ifcopenshell.api.alignment.get_curve(ali)
+    assert curve.is_a("IfcGradientCurve")
+    assert len(basis_curve.Segments) == 2
+    assert len(curve.Segments) == 3
+
+
+def _test_horizontal_vertical2(file: ifcopenshell.file):
+    ali = file.by_type("IfcAlignment")[0]
+
+    vertical_alignment = ifcopenshell.api.alignment.get_vertical_alignment(ali)
+    assert vertical_alignment == None
+    
+    vertical_alignment = file.createIfcAlignmentVertical(GlobalId=ifcopenshell.guid.new())
+    ifcopenshell.api.alignment.add_vertical_alignment(file,ali,vertical_alignment)
+
+    design_parameters = file.createIfcAlignmentVerticalSegment(
+        StartDistAlong=0.0,
+        HorizontalLength=50.0,
+        StartHeight=20.0,
+        StartGradient = 1./100.,
+        EndGradient = 1./100.,
+        PredefinedType="CONSTANTGRADIENT"
+        )
+    end = ifcopenshell.api.alignment.append_segment(file,vertical_alignment,design_parameters)
+
+    assert len(vertical_alignment.IsNestedBy[0].RelatedObjects) == 2
+
+    x = end[:,3][0]
+    y = end[:,3][1]
+    z = end[:,3][2]
+    
+    assert x == 50.
+    assert y == 20.5
+    assert z == 0.0
+
+    design_parameters = file.createIfcAlignmentVerticalSegment(
+        StartDistAlong=50.0,
+        HorizontalLength=50.0,
+        StartHeight=y.item(),
+        StartGradient = -1./100.,
+        EndGradient = -1./100.,
+        PredefinedType="CONSTANTGRADIENT"
+        )
+    end = ifcopenshell.api.alignment.append_segment(file,vertical_alignment,design_parameters)
+
+    assert len(vertical_alignment.IsNestedBy[0].RelatedObjects) == 3
+
+    x = end[:,3][0]
+    y = end[:,3][1]
+    z = end[:,3][2]
+    
+    assert x == 100.
+    assert y == 20.
+    assert z == 0.0
+
+    curve = ifcopenshell.api.alignment.get_curve(ali)
+    assert curve.is_a("IfcGradientCurve")
+    assert len(curve.Segments) == 3
+
+def test_append_segment():
+    file = _test_horizontal()
+    _test_horizontal_vertical()
+    _test_horizontal_vertical2(file)

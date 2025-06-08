@@ -78,12 +78,13 @@ def add_vertical_alignment(
     Specifically, the following occurs:
 
     1) The first child IfcAlignment is created and is IfcRelAggregates with the parent alignment.
-    2) The first vertical alignment is unassigned from the IfcRelNests of the parent alignment and assigned to the new child alignment IfcRelNests
-    3) A second child IfcAlignment is created ant is is IfcRelAggregates with the parent alignment.
-    4) The vertical_alignment is assigned to the second child alignment
+    2) The first vertical alignment is unassigned from the IfcRelNests of the parent alignment and is IfcRelNests to the new child alignment.
+    3) A second child IfcAlignment is created and it is IfcRelAggregates with the parent alignment.
+    4) The vertical_alignment is IfcRelNests to the second child alignment
 
-    For the third and subsequent vertical alignments, a new child alignment is created and aggregated to the parent alignment and an IfcAlignmentVertical is created
-    from vpoints and lengths and assigned to the new child alignment.
+    For the third and subsequent vertical alignments, a new child alignment is created and aggregated to the parent alignment.
+
+    If vertical_alignment does not end with a zero length segment, one is created an added to the vertical alignment layout.
 
     If the parent_alignment has a geometric representation, a geometric representation will be created for the vertical alignment.
 
@@ -91,6 +92,9 @@ def add_vertical_alignment(
     :param vertical_alignment: The vertical alignment to be added
     :return: None
     """
+
+    if not ifcopenshell.api.alignment.has_zero_length_segment(vertical_alignment):
+        ifcopenshell.api.alignment.add_zero_length_segment(file,vertical_alignment)
 
     # get all the child alignments under alignment
     child_alignments = [
