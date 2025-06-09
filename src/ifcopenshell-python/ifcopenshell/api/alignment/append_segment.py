@@ -83,6 +83,6 @@ def append_segment(file: ifcopenshell.file, layout: entity_instance, design_para
     segment_fn = ifcopenshell_wrapper.map_shape(settings, curve_segment.wrapped_data)
     segment_evaluator = ifcopenshell_wrapper.function_item_evaluator(settings, segment_fn)
     e = segment_evaluator.evaluate(segment_fn.end())
-    end = np.array(e)
+    end = np.array(e, dtype=np.float64).T
 
     return end

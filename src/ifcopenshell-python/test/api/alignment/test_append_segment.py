@@ -62,9 +62,9 @@ def _test_horizontal() -> ifcopenshell.file:
 
     assert len(horizontal_alignment.IsNestedBy[0].RelatedObjects) == 2
 
-    x = end[:,3][0]
-    y = end[:,3][1]
-    z = end[:,3][2]
+    x = end[3][0]
+    y = end[3][1]
+    z = end[3][2]
     
     assert x == 100.0
     assert y == 0.0
@@ -79,7 +79,7 @@ def _test_horizontal() -> ifcopenshell.file:
         type="IfcAlignmentHorizontalSegment",
         StartTag=None,
         EndTag=None,
-        StartPoint=file.createIfcCartesianPoint(Coordinates=((x.item(), y.item()))),
+        StartPoint=file.createIfcCartesianPoint(Coordinates=((float(x), float(y)))),
         StartDirection=math.pi/6,
         StartRadiusOfCurvature=0.0,
         EndRadiusOfCurvature=0.0,
@@ -91,9 +91,9 @@ def _test_horizontal() -> ifcopenshell.file:
     end = ifcopenshell.api.alignment.append_segment(file,horizontal_alignment,design_parameters)
     assert len(horizontal_alignment.IsNestedBy[0].RelatedObjects) == 3
 
-    x = end[:,3][0]
-    y = end[:,3][1]
-    z = end[:,3][2]
+    x = end[3][0]
+    y = end[3][1]
+    z = end[3][2]
     
     assert x == 100.0 + 50.0*math.cos(math.pi/6)
     assert y == 50.0*math.sin(math.pi/6)
@@ -167,9 +167,9 @@ def _test_horizontal_vertical():
 
     assert len(vertical_alignment.IsNestedBy[0].RelatedObjects) == 2
 
-    x = end[:,3][0]
-    y = end[:,3][1]
-    z = end[:,3][2]
+    x = end[3][0]
+    y = end[3][1]
+    z = end[3][2]
     
     assert x == 50.
     assert y == 20.5
@@ -178,7 +178,7 @@ def _test_horizontal_vertical():
     design_parameters = file.createIfcAlignmentVerticalSegment(
         StartDistAlong=50.0,
         HorizontalLength=50.0,
-        StartHeight=y.item(),
+        StartHeight=y,
         StartGradient = -1./100.,
         EndGradient = -1./100.,
         PredefinedType="CONSTANTGRADIENT"
@@ -187,9 +187,9 @@ def _test_horizontal_vertical():
 
     assert len(vertical_alignment.IsNestedBy[0].RelatedObjects) == 3
 
-    x = end[:,3][0]
-    y = end[:,3][1]
-    z = end[:,3][2]
+    x = end[3][0]
+    y = end[3][1]
+    z = end[3][2]
     
     assert x == 100.
     assert y == 20.
@@ -224,9 +224,9 @@ def _test_horizontal_vertical2(file: ifcopenshell.file):
 
     assert len(vertical_alignment.IsNestedBy[0].RelatedObjects) == 2
 
-    x = end[:,3][0]
-    y = end[:,3][1]
-    z = end[:,3][2]
+    x = end[3][0]
+    y = end[3][1]
+    z = end[3][2]
     
     assert x == 50.
     assert y == 20.5
@@ -235,7 +235,7 @@ def _test_horizontal_vertical2(file: ifcopenshell.file):
     design_parameters = file.createIfcAlignmentVerticalSegment(
         StartDistAlong=50.0,
         HorizontalLength=50.0,
-        StartHeight=y.item(),
+        StartHeight=y,
         StartGradient = -1./100.,
         EndGradient = -1./100.,
         PredefinedType="CONSTANTGRADIENT"
@@ -244,9 +244,9 @@ def _test_horizontal_vertical2(file: ifcopenshell.file):
 
     assert len(vertical_alignment.IsNestedBy[0].RelatedObjects) == 3
 
-    x = end[:,3][0]
-    y = end[:,3][1]
-    z = end[:,3][2]
+    x = end[3][0]
+    y = end[3][1]
+    z = end[3][2]
     
     assert x == 100.
     assert y == 20.
