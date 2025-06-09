@@ -48,9 +48,9 @@ def test_create_alignment():
         assert len(curve.Segments) == 1
         assert ifcopenshell.api.alignment.has_zero_length_segment(curve)
 
-        horiz = ifcopenshell.api.alignment.get_horizontal_alignment(ali)
-        vert = ifcopenshell.api.alignment.get_vertical_alignment(ali)
-        cant = ifcopenshell.api.alignment.get_cant_alignment(ali)
+        horiz = ifcopenshell.api.alignment.get_horizontal_layout(ali)
+        vert = ifcopenshell.api.alignment.get_vertical_layout(ali)
+        cant = ifcopenshell.api.alignment.get_cant_layout(ali)
         
         assert horiz != None
         if include_vertical[i]:

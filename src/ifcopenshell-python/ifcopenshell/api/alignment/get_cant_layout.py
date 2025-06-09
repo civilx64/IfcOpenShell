@@ -18,13 +18,13 @@
 
 from ifcopenshell import entity_instance
 
-def get_horizontal_alignment(alignment: entity_instance) -> entity_instance:
+def get_cant_layout(alignment: entity_instance) -> entity_instance:
     """
-    Returns the IfcAlignmentHorizontal assocated with this alignment
+    Returns the IfcAlignmentCant assocated with this alignment
     """
     for rel in alignment.IsNestedBy:
         for layout in rel.RelatedObjects:
-            if layout.is_a("IfcAlignmentHorizontal") :
+            if layout.is_a("IfcAlignmentCant") :
                 return layout
 
     return None

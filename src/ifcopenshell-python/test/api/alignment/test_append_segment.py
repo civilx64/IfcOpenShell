@@ -38,7 +38,7 @@ def _test_horizontal() -> ifcopenshell.file:
     ali = ifcopenshell.api.alignment.create_alignment(file,"A1")
 
     # append a segment to the horizontal layout
-    horizontal_alignment = ifcopenshell.api.alignment.get_horizontal_alignment(ali)
+    horizontal_alignment = ifcopenshell.api.alignment.get_horizontal_layout(ali)
 
     curve = ifcopenshell.api.alignment.get_curve(horizontal_alignment)
     assert curve == None # for single horizontal, geometric representation is on IfcAlignment
@@ -122,8 +122,8 @@ def _test_horizontal_vertical():
     ali = ifcopenshell.api.alignment.create_alignment(file,"A1",True)
 
     # append a segment to the horizontal layout
-    horizontal_alignment = ifcopenshell.api.alignment.get_horizontal_alignment(ali)
-    vertical_alignment = ifcopenshell.api.alignment.get_vertical_alignment(ali)
+    horizontal_alignment = ifcopenshell.api.alignment.get_horizontal_layout(ali)
+    vertical_alignment = ifcopenshell.api.alignment.get_vertical_layout(ali)
 
     curve = ifcopenshell.api.alignment.get_curve(horizontal_alignment)
     assert curve == None
@@ -175,6 +175,10 @@ def _test_horizontal_vertical():
     assert y == 20.5
     assert z == 0.0
 
+    dx = end[0,0]
+    dy = end[1,0]
+    gradient = dy/dx
+
     design_parameters = file.createIfcAlignmentVerticalSegment(
         StartDistAlong=50.0,
         HorizontalLength=50.0,
@@ -206,7 +210,7 @@ def _test_horizontal_vertical():
 def _test_horizontal_vertical2(file: ifcopenshell.file):
     ali = file.by_type("IfcAlignment")[0]
 
-    vertical_alignment = ifcopenshell.api.alignment.get_vertical_alignment(ali)
+    vertical_alignment = ifcopenshell.api.alignment.get_vertical_layout(ali)
     assert vertical_alignment == None
     
     vertical_alignment = file.createIfcAlignmentVertical(GlobalId=ifcopenshell.guid.new())
@@ -231,6 +235,10 @@ def _test_horizontal_vertical2(file: ifcopenshell.file):
     assert x == 50.
     assert y == 20.5
     assert z == 0.0
+
+    dx = end[0,0]
+    dy = end[1,0]
+    gradient = dy/dx
 
     design_parameters = file.createIfcAlignmentVerticalSegment(
         StartDistAlong=50.0,
