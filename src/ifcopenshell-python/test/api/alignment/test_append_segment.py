@@ -75,12 +75,13 @@ def _test_horizontal() -> ifcopenshell.file:
     assert len(curve.Segments) == 2
 
 
+    direction_angle = math.pi / 6
     design_parameters = file.create_entity(
         type="IfcAlignmentHorizontalSegment",
         StartTag=None,
         EndTag=None,
         StartPoint=file.createIfcCartesianPoint(Coordinates=((float(x), float(y)))),
-        StartDirection=math.pi/6,
+        StartDirection=direction_angle,
         StartRadiusOfCurvature=0.0,
         EndRadiusOfCurvature=0.0,
         SegmentLength=50.0,
@@ -94,10 +95,16 @@ def _test_horizontal() -> ifcopenshell.file:
     x = end[3][0]
     y = end[3][1]
     z = end[3][2]
+
+    direction_i = end[0][0]
+    direction_j = end[0][1]
+
     
-    assert x == 100.0 + 50.0*math.cos(math.pi/6)
-    assert y == 50.0*math.sin(math.pi/6)
+    assert x == 100.0 + 50.0 * math.cos(direction_angle)
+    assert y == 50.0 * math.sin(direction_angle)
     assert z == 0.0
+    assert math.atan2(direction_j, direction_i) == pytest.approx(direction_angle)
+
 
     curve = ifcopenshell.api.alignment.get_curve(ali)
     assert curve.is_a("IfcCompositeCurve")
@@ -175,9 +182,11 @@ def _test_horizontal_vertical():
     assert y == 20.5
     assert z == 0.0
 
-    dx = end[0,0]
-    dy = end[1,0]
-    gradient = dy/dx
+    dx = end[0][0]
+    dy = end[0][1]
+    gradient = dy / dx
+
+    assert gradient == pytest.approx(0.01)
 
     design_parameters = file.createIfcAlignmentVerticalSegment(
         StartDistAlong=50.0,
@@ -236,9 +245,10 @@ def _test_horizontal_vertical2(file: ifcopenshell.file):
     assert y == 20.5
     assert z == 0.0
 
-    dx = end[0,0]
-    dy = end[1,0]
-    gradient = dy/dx
+    dx = end[0][0]
+    dy = end[0][1]
+    gradient = dy / dx
+    assert gradient == pytest.approx(0.01)
 
     design_parameters = file.createIfcAlignmentVerticalSegment(
         StartDistAlong=50.0,
@@ -255,10 +265,15 @@ def _test_horizontal_vertical2(file: ifcopenshell.file):
     x = end[3][0]
     y = end[3][1]
     z = end[3][2]
+
+    dx = end[0][0]
+    dy = end[0][1]
+    gradient = dy / dx
     
     assert x == 100.
     assert y == 20.
     assert z == 0.0
+    assert gradient == pytest.approx(-0.01)
 
     curve = ifcopenshell.api.alignment.get_curve(ali)
     assert curve.is_a("IfcGradientCurve")
